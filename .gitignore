@@ -1,0 +1,7 @@
+# general files
+data/**
+
+# detectron2 files
+
+# inpainting files
+inpaint/pretrained_models/**

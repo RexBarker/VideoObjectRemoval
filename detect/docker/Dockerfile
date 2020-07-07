@@ -44,41 +44,13 @@ ARG TORCH_CUDA_ARCH_LIST="Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta
 ENV TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"
 
 RUN pip install --user -e detectron2_repo
-
-# install Deep-Flow
-RUN git clone https://github.com/nbei/Deep-Flow-Guided-Video-Inpainting.git Deep-Flow 
-
 RUN pip install --user jupyter scipy pandas scikit-learn ipykernel
 
 # Set a fixed model cache directory.
 ENV FVCORE_CACHE="/tmp"
 
-WORKDIR /home/appuser
-
-RUN sudo apt-get update && sudo apt-get install \
-  -y --no-install-recommends python3 python3-virtualenv
-
-# create virtual environment for DeepFlow
-ENV VIRTUAL_ENV=/home/appuser/venv
-RUN python3 -m virtualenv --python=/usr/bin/python3 $VIRTUAL_ENV
-#ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-
-WORKDIR /home/appuser/
-
-RUN echo ". /home/appuser/venv/bin/activate" > /home/appuser/setup_venv.sh \
- && echo "apt update -y; sudo apt install -y python3 python3-pip libglib2.0-0 libsm6 libxext6 libxrender-dev" >> /home/appuser/setup_venv.sh \
- && echo "pip3 --disable-pip-version-check install addict==2.2.1 certifi==2019.6.16 cffi==1.12.3 chardet==3.0.4 cvbase==0.5.5 Cython==0.29.12 idna==2.8 mkl-fft mkl-random numpy==1.16.4 olefile==0.46 opencv-python==4.1.0.25 Pillow==6.2.0 protobuf==3.8.0 pycparser==2.19 PyYAML==5.1.1 requests==2.22.0 scipy==1.2.1 six==1.12.0 tensorboardX==1.8 terminaltables==3.1.0 torch==0.4.0 torchvision==0.2.1 tqdm==4.32.1 urllib3==1.25.3 ipykernel" \
- >>  /home/appuser/setup_venv.sh \
- && echo "pip3 --disable-pip-version-check install mmcv==0.2.10" >> /home/appuser/setup_venv.sh \
- && echo "python -m ipykernel install --user --name venv --display-name venv" >> /home/appuser/setup_venv.sh \
- && chmod +x /home/appuser/setup_venv.sh
-
-RUN sudo /home/appuser/setup_venv.sh && rm /home/appuser/setup_venv.sh
-
-
 # working location
 WORKDIR /home/appuser/
-#WORKDIR /home/appuser/detectron2_repo
 
 #CMD ["/usr/sbin/sshd","-D"]
 
