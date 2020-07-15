@@ -1,3 +1,5 @@
+# to be run in host environment (where docker daemon is running)
+
 # run the demo flamingo model using docker
 docker exec -ti inpaint \
 	/usr/bin/python3 /home/appuser/Deep-Flow/tools/video_inpaint.py \

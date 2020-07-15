@@ -1,5 +1,9 @@
+#
+**.vscode
+
 # general files
 data/**
+*.ipynb
 
 # detectron2 files
 
