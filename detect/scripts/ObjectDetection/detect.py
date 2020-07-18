@@ -82,7 +82,7 @@ class DetectSingle:
             # was an image file path 
             assert os.path.exists(img), f"Specified image file {img} does not exist"
             self.im = cv2.imread(img)
-        elif isinstance(img,np.array):
+        elif isinstance(img,np.ndarray):
             self.im = img
         else:
             raise Exception("Could not determine the object instance of 'img'")
@@ -142,7 +142,11 @@ class DetectSingle:
 
         return vout.get_image()[:, :, ::-1]  # reverses channels again
 
-
+# Class: TrackSequence
+# - creates the basic sequence collection for set of input frames
+# - defined by either the filelist or a fileglob (list is better, you do the picking)
+# - assumptions are that all frames will be sequenced as XXX.jpg or XXX.png
+# - where XXX is the numerical order of the frame in the sequence
 class TrackSequence(DetectSingle):
     def __init__(self, *args, **kwargs):
         super(TrackSequence,self).__init__(*args, **kwargs)
@@ -178,10 +182,10 @@ class TrackSequence(DetectSingle):
     def get_images(self):
         return self.imglist 
 
-    def predict_sequence(self,fileglob=None, filespec=None, **kwargs):
-        if self.imglist is None:
+    def predict_sequence(self,fileglob=None, filelist=None, **kwargs):
+        if len(self.imglist) == 0:
             # load images was not called yet
-            self.load_images(fileglob=fileglob, filespec=filespec, **kwargs)
+            self.load_images(fileglob=fileglob, filelist=filelist, **kwargs)
 
         for im in self.imglist:
             self.predict(im)  
@@ -192,13 +196,143 @@ class TrackSequence(DetectSingle):
         return len(self.masklist) 
 
     def get_results(self,getImage=True, getMasks=True, getBBoxes=True, getClasses=True):
+        """
+            Results for sequence prediction, returned as dictionary for objName
+            (easily pickelable)
+        """
         res = dict()
         if getImage: res['im'] = self.imglist
         if getMasks: res['masks'] = self.masklist
         if getBBoxes: res['bboxes'] = self.bboxlist
         if getClasses: res['classes'] = self.objclasslist
 
-        return res 
+        return res  
+
+# Class GroupSequence
+# - creates the grouping of a sequence by object based on class
+# - Object (in this sense): A single person, car, truck, teddy bear, etc.
+# - Class (in this sense): The type of object (i.e. persons, cars, trucks, teddy bears, etc.)
+# Main output:
+# - "objBBMaskSeq": { 
+#                     objName1: [ [[seqBB], [seqMask] (obj1)], [[seqBB], [seqMask] (obj2)], etc]
+#                     objName2: [ [[seqBB], [seqMask] (obj1)], [[seqBB], [seqMask] (obj2)], etc]
+#                    }
+class GroupSequence(TrackSequence):
+    def __init__(self, *args, **kwargs):
+        super(GroupSequence,self).__init__(*args, **kwargs)
+
+        # sequence tracking variables 
+        self.objBBMaskSeqDict = None
+        self.objBBMaskSeqGrpDict = None
+
+    @staticmethod
+    def __assignBBMaskToGroupByDistIndex(attainedGroups, trialBBs, trialMasks, index=None, widthFactor=2.0):
+        """
+            Assign points to grouping:
+            - [trialBBs] list of bounding boxs in given frame 
+            - [trialMasks] list of Masks in given frame 
+            - index : the index of the frame in the sequence
+            - Note: len(trialBBs) == len(trialMasks), if nothing is predicted, an empty list is a place holder
+            This function is meant to be called recursively, adding to its previous description of attainedGroups
+        """
+        
+        # trivial case.  No points to work on
+        if trialBBs is None or not len(trialBBs):
+            return attainedGroups
+        
+        # no actual groups assigned yet, so enumerate the existing points into groups
+        if attainedGroups is None or not len(attainedGroups):
+            return [ [[bb,msk,index]] for bb,msk in zip(trialBBs,trialMasks)]
+        
+        lastGrpBBMsk = [grp[-1][:2] for grp in attainedGroups]
+        currgrps = { i for i in range(len(attainedGroups))}
+        
+        for bbx,msk in zip(trialBBs,trialMasks):
+            x1,y1,x2,y2 = bbx
+            w = x2 - x1
+            h = y2 - y1
+            xc = (x1+x2)/2
+            yc = (y1+y2)/2
+
+            dist = []
+            for gi,gbbmsk in enumerate(lastGrpBBMsk):
+                gbb,gmsk = gbbmsk
+                gx1,gy1,gx2,gy2 = gbb
+                gxc = (gx1+gx2)/2
+                gyc = (gy1+gy2)/2
+                d = np.sqrt((xc - gxc)**2 + (yc - gyc)**2)
+                dist.append([d,gi])
+            
+            #remove possible groups which were previously found
+            dist = [[di,gi] for di,gi in dist if gi in currgrps]
+        
+            dist0 = dist[0] if dist else None
+            mdist = dist0[0] if dist0 else None
+            mdist_idx = dist0[1] if dist0 else None
+
+            if len(dist) > 1:
+                for d,idx in dist[1:]:
+                    if d < mdist:
+                        mdist = d
+                        mdist_idx = idx
+            
+            if mdist is None or mdist > widthFactor * w:
+                # must be a new group
+                attainedGroups.append([[bbx,msk,index]])  
+            else:
+                # belongs to an existing group
+                attainedGroups[mdist_idx].append([bbx,msk,index])
+                #currgrps.remove(mdist_idx) #--> cleanout
+                
+        return attainedGroups
+
+    
+    def __createObjBBMask(self):
+        assert self.selClassList is not None, "No select object classes defined"
+        assert self.objclasslist is not None, "No objclass sequences exist"
+        assert self.imlist is not None, "No image sequences exist"
+        assert self.boxlist is not None, "No bbox sequences exist"
+        assert self.masklist is not None, "No mask sequences exist"
+
+        seenObjects = { o for olist in self.objclasslist for o in olist }
+
+        self.objBBMaskSeqDict = dict()
+        for objind in list(seenObjects):
+            objName = self.thing_classes[objind]
+            bbxlist = []
+            msklist = []
+
+            for bbxl, mskl, indl in zip(self.boxlist, self.masklist, self.objclasslist):
+                bbxlist.append([bbx for bbx,ind in zip(bbxl,indl) if ind == objind])
+                msklist.append([msk for msk,ind in zip(mskl,indl) if ind == objind])
+
+            self.objBBMaskSeqDict[objName] = [bbxlist, msklist]
+        
+        return len(self.objBBMaskSeqDict)
+
+    def groupObjBBMaskSequence(self):
+
+        self.__createObjBBMask()
+        assert self.objBBMaskSeqDict is not None, "BBox and Mask sequences have not been grouped by objectName"
+
+        self.objBBMaskSeqGrpDict = dict()
+        for objName, bblmskl in self.objBBMaskSeqDict.items():
+            bbl,mskl = bblmskl
+            attGrpBBMsk = []
+            for i,bbsmsks in enumerate(zip(bbl,mskl)):
+                bbxs,msks = bbsmsks
+                if not bbxs: continue
+            
+            attGrpBBMsk = __assignBBMaskToGroupByDistIndex(attGrpBBMsk,bbxs,msks,i)
+    
+        self.objBBMaskSeqGrpDict[objName] = attGrpBBMsk
+
+
+
+    
+
+
+
 
 
 if __name__ == "__main__":

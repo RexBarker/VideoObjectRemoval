@@ -4,6 +4,7 @@
 # general files
 data/**
 *.ipynb
+*.pyc
 
 # detectron2 files
 
