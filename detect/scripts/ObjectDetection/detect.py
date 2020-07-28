@@ -121,7 +121,7 @@ class DetectSingle:
         for i,(msk,bbox) in enumerate(zip(self.masks,self.bboxes)):
             color = self.thing_colors[i]
             x,y = [round(c) for c in imu.bboxCenter(bbox)]
-            outim = imu.mask_image(outim,msk,color)
+            outim = imu.maskImage(outim,msk,color)
             if addIndices:
                 cv2.putText(outim,str(i), (x,y), **self.fontconfig)
         
@@ -195,7 +195,7 @@ class TrackSequence(DetectSingle):
         
         return len(self.masklist) 
 
-    def get_results(self,getImage=True, getMasks=True, getBBoxes=True, getClasses=True):
+    def get_sequenceResults(self,getImage=True, getMasks=True, getBBoxes=True, getClasses=True):
         """
             Results for sequence prediction, returned as dictionary for objName
             (easily pickelable)
@@ -224,6 +224,7 @@ class GroupSequence(TrackSequence):
         # sequence tracking variables 
         self.objBBMaskSeqDict = None
         self.objBBMaskSeqGrpDict = None
+        self.combinedMaskList = None
 
     @staticmethod
     def __assignBBMaskToGroupByDistIndex(attainedGroups, trialBBs, trialMasks, index=None, widthFactor=2.0):
@@ -288,10 +289,9 @@ class GroupSequence(TrackSequence):
 
     
     def __createObjBBMask(self):
-        assert self.selClassList is not None, "No select object classes defined"
         assert self.objclasslist is not None, "No objclass sequences exist"
-        assert self.imlist is not None, "No image sequences exist"
-        assert self.boxlist is not None, "No bbox sequences exist"
+        assert self.imglist is not None, "No image sequences exist"
+        assert self.bboxlist is not None, "No bbox sequences exist"
         assert self.masklist is not None, "No mask sequences exist"
 
         seenObjects = { o for olist in self.objclasslist for o in olist }
@@ -302,7 +302,7 @@ class GroupSequence(TrackSequence):
             bbxlist = []
             msklist = []
 
-            for bbxl, mskl, indl in zip(self.boxlist, self.masklist, self.objclasslist):
+            for bbxl, mskl, indl in zip(self.bboxlist, self.masklist, self.objclasslist):
                 bbxlist.append([bbx for bbx,ind in zip(bbxl,indl) if ind == objind])
                 msklist.append([msk for msk,ind in zip(mskl,indl) if ind == objind])
 
@@ -310,7 +310,15 @@ class GroupSequence(TrackSequence):
         
         return len(self.objBBMaskSeqDict)
 
-    def groupObjBBMaskSequence(self):
+    def groupObjBBMaskSequence(self,fileglob=None, filelist=None, **kwargs):
+
+        if len(self.imglist) == 0:
+            # load images was not called yet
+            self.load_images(fileglob=fileglob, filelist=filelist, **kwargs)
+        
+        if len(self.masklist) == 0:
+            # predict images was not called yet
+            self.predict_sequence(fileglob=fileglob, filelist=filelist, **kwargs)
 
         self.__createObjBBMask()
         assert self.objBBMaskSeqDict is not None, "BBox and Mask sequences have not been grouped by objectName"
@@ -322,16 +330,89 @@ class GroupSequence(TrackSequence):
             for i,bbsmsks in enumerate(zip(bbl,mskl)):
                 bbxs,msks = bbsmsks
                 if not bbxs: continue
+                attGrpBBMsk = self.__assignBBMaskToGroupByDistIndex(attGrpBBMsk,bbxs,msks,i)
+    
+            self.objBBMaskSeqGrpDict[objName] = attGrpBBMsk
+    
+    def filter_ObjBBMaskSeq(self,objNameList=None,minCount=10,inPlace=True):
+        """
+            Performs filtering for minimum group size
+            Eventually also for minimum relative object size
+        """
+        if objNameList is None:
+            objNameList = list(self.objBBMaskSeqGrpDict.keys())
+        elif not isinstance(objNameList,list):
+            objNameList = [objNameList]
+        
+        assert all([objN in list(self.objBBMaskSeqGrpDict.keys()) for objN in objNameList]), \
+            "Invalid list of object names given"
+        
+        filteredSeq = dict()
+        for grpName in objNameList:
+            for grp in self.objBBMaskSeqGrpDict[grpName]:
+                if len(grp) >= minCount:
+                    if not filteredSeq.get(grpName):
+                        filteredSeq[grpName] = [grp]
+                    else:
+                        filteredSeq[grpName].append(grp)
+        
+        if inPlace:
+            self.objBBMaskSeqGrpDict = filteredSeq
+            return True
+        else:
+            return filteredSeq
+
             
-            attGrpBBMsk = __assignBBMaskToGroupByDistIndex(attGrpBBMsk,bbxs,msks,i)
-    
-        self.objBBMaskSeqGrpDict[objName] = attGrpBBMsk
+    def get_groupedResults(self, getObjNamesOnly=False, getSpecificObjNames=None):
+        """
+            Results for sequence prediction, returned as dictionary for objName
+            (easily pickelable)
+        """
+        if getObjNamesOnly:
+            return list(self.objBBMaskSeqGrpDict.keys())
 
+        if getSpecificObjNames is not None:
+            if not isinstance(getSpecificObjNames,list):
+                getSpecificObjNames = [getSpecificObjNames]
 
+            getNames = [ n for n in self.objBBMaskSeqGrpDict.keys() if n in getSpecificObjNames ]
+        else:
+            getNames = list(self.objBBMaskSeqGrpDict.keys())
 
-    
+        res = { k:v for k,v in self.objBBMaskSeqGrpDict.items() if k in getNames}
+        return res
 
+    def combine_MaskSequence(self,objNameList=None, writeToDirectory=None, cleanDirectory=False, inPlace=True):
+        """
+            Purpose is to combine all masks at a given time index
+            to a single mask. Result is stored 
+        """
+        if objNameList is None:
+            objNameList = list(self.objBBMaskSeqGrpDict.keys())
+        elif not isinstance(objNameList,list):
+            objNameList = [objNameList]
 
+        assert all([objN in list(self.objBBMaskSeqGrpDict.keys()) for objN in objNameList]), \
+            "Invalid list of object names given"
+
+        n_frames = len(self.imglist)
+        seqMasks = [ [] for _ in range(n_frames)]
+
+        for objName in objNameList:
+            for objgrp in self.objBBMaskSeqGrpDict[objName]:
+                for bbx,msk,ind in objgrp:
+                    seqMasks[ind].append(msk)
+
+        combinedMasks = [imu.combineMasks(msks) for msks in seqMasks]
+
+        if writeToDirectory is not None:
+            imu.writeMasksToDirectory(combinedMasks,writeToDirectory,cleanDirectory=cleanDirectory)
+        
+        if inPlace:
+            self.combinedMaskList = combinedMasks
+            return True
+        else:
+            return combinedMasks
 
 
 

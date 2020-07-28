@@ -1,10 +1,12 @@
 # Basic image utilities 
 
 import os
+from glob import glob
 
 # import some common libraries
 import cv2
 import numpy as np
+from math import log10, ceil
 
 def bboxToList(bboxTensor):
     return  [float(x) for x in bboxTensor.to('cpu').tensor.numpy().ravel()]
@@ -41,7 +43,22 @@ def bboxIoU(boxA, boxB):
     # return the intersection over union value
     return iou
 
-def mask_image(im, mask, mask_color=(0,0,255), inplace=False):
+
+def combineMasks(maskList):
+    # single mask passed
+    if not isinstance(maskList,list):
+        return maskList   
+    elif len(maskList) == 1:
+        return maskList[0]     
+
+    maskcomb = maskList[0].copy()
+    for msk in maskList[1:]:
+        maskcomb = np.logical_or(maskcomb,msk)
+    
+    return maskcomb
+
+
+def maskImage(im, mask, mask_color=(0,0,255), inplace=False):
     if inplace:
         outim = im
     else:
@@ -49,8 +66,33 @@ def mask_image(im, mask, mask_color=(0,0,255), inplace=False):
     
     for i in range(3):
         outim[:,:,i] = (mask > 0) * mask_color[i] + (mask == 0) * outim[:, :, i]
-    
+
     return outim
+
+def writeMasksToDirectory(maskList,dirPath,imgtype='png',cleanDirectory=False):
+    """
+        writes flat list of mask arrays to directory
+        Here, it is understood that mask is an np.array,dtype='bool'
+        of shape (w,h)
+    """
+    assert imgtype in ('png', 'jpg'), f"Invalid image type '{imgtype}' given"
+
+    if not os.path.isdir(dirPath):
+        os.mkdir(dirPath)
+    elif cleanDirectory:
+        for f in glob(os.path.join(dirPath,"*." + imgtype)):
+            pass
+            #os.remove(f) # danger Will Robinson
+
+    n_frames = len(maskList)
+    padlength = ceil(log10(n_frames))    
+    for i,msk in enumerate(maskList):
+        fname = str(i).rjust(padlength,'0') + '.' + imgtype
+        fname = os.path.join(dirPath,fname)
+        cv2.imwrite(fname,msk * 255)
+    
+    return n_frames
+
 
 def maskedItemRelativeHistogram(img, msk,n_bins=10):
     im = img.copy()
@@ -81,7 +123,7 @@ def maskedItemRelativeHistogram(img, msk,n_bins=10):
     return (h_hist[0]/h_hist[0].sum(), v_hist[0]/v_hist[0].sum())
     
 
-def draw_point(im, XY, color=(0,0,255), radius=0, thickness = -1, inplace=False):
+def drawPoint(im, XY, color=(0,0,255), radius=0, thickness = -1, inplace=False):
     """
         draws a points over the top of an image 
         point : (x,y) 
@@ -96,7 +138,8 @@ def draw_point(im, XY, color=(0,0,255), radius=0, thickness = -1, inplace=False)
     outim = cv2.circle(outim, xy, radius=radius, color=color, thickness=thickness)
     return outim
 
-def draw_point_list(im, XY_color_list, radius=0, thickness = -1, inplace=False):
+
+def drawPointList(im, XY_color_list, radius=0, thickness = -1, inplace=False):
     """
         draws points over the top of an image given a list of (point,color) pairs
         point : (x,y) 
