@@ -69,23 +69,57 @@ def maskImage(im, mask, mask_color=(0,0,255), inplace=False):
 
     return outim
 
-def writeMasksToDirectory(maskList,dirPath,imgtype='png',cleanDirectory=False):
+
+def writeImagesToDirectory(imageList,dirPath,minPadLength=None,imgtype='png',cleanDirectory=False):
     """
-        writes flat list of mask arrays to directory
-        Here, it is understood that mask is an np.array,dtype='bool'
-        of shape (w,h)
+        writes flat list of image arrays to directory
+        Here, it is understood that images are an np.array, dtype='uint8' 
+        of shape (w,h,3)
     """
     assert imgtype in ('png', 'jpg'), f"Invalid image type '{imgtype}' given"
 
     if not os.path.isdir(dirPath):
-        os.mkdir(dirPath)
+        path = ''
+        for d in dirPath.split('/'):
+            if not d: continue
+            path += d + '/'
+            if not os.path.isdir(path):
+                os.mkdir(path)
     elif cleanDirectory:
         for f in glob(os.path.join(dirPath,"*." + imgtype)):
-            pass
-            #os.remove(f) # danger Will Robinson
+            os.remove(f) # danger Will Robinson
+
+    n_frames = len(imageList)
+    padlength = ceil(log10(n_frames)) if minPadLength is None else minPadLength    
+    for i,img in enumerate(imageList):
+        fname = str(i).rjust(padlength,'0') + '.' + imgtype
+        fname = os.path.join(dirPath,fname)
+        cv2.imwrite(fname,img)
+    
+    return n_frames
+
+
+def writeMasksToDirectory(maskList,dirPath,minPadLength=None,imgtype='png',cleanDirectory=False):
+    """
+        writes flat list of mask arrays to directory
+        Here, it is understood that mask is an np.array,dtype='bool'
+        of shape (w,h), will be output to (w,h,3) for compatibility
+    """
+    assert imgtype in ('png', 'jpg'), f"Invalid image type '{imgtype}' given"
+
+    if not os.path.isdir(dirPath):
+        path = ''
+        for d in dirPath.split('/'):
+            if not d: continue
+            path += d + '/'
+            if not os.path.isdir(path):
+                os.mkdir(path)
+    elif cleanDirectory:
+        for f in glob(os.path.join(dirPath,"*." + imgtype)):
+            os.remove(f) # danger Will Robinson
 
     n_frames = len(maskList)
-    padlength = ceil(log10(n_frames))    
+    padlength = ceil(log10(n_frames)) if minPadLength is None else minPadLength    
     for i,msk in enumerate(maskList):
         fname = str(i).rjust(padlength,'0') + '.' + imgtype
         fname = os.path.join(dirPath,fname)

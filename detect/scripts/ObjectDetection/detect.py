@@ -382,7 +382,11 @@ class GroupSequence(TrackSequence):
         res = { k:v for k,v in self.objBBMaskSeqGrpDict.items() if k in getNames}
         return res
 
-    def combine_MaskSequence(self,objNameList=None, writeToDirectory=None, cleanDirectory=False, inPlace=True):
+
+    def combine_MaskSequence(self,objNameList=None, 
+                             writeImagesToDirectory=None, 
+                             writeMasksToDirectory=None, 
+                             cleanDirectory=False, inPlace=True):
         """
             Purpose is to combine all masks at a given time index
             to a single mask. Result is stored 
@@ -396,8 +400,15 @@ class GroupSequence(TrackSequence):
             "Invalid list of object names given"
 
         n_frames = len(self.imglist)
-        seqMasks = [ [] for _ in range(n_frames)]
 
+        # write images (which are paired with masks)
+        if writeImagesToDirectory is not None:
+            imu.writeImagesToDirectory(self.imglist,writeImagesToDirectory,
+                                       minPadLength=5,
+                                       cleanDirectory=cleanDirectory)
+
+        # combine and write masks
+        seqMasks = [ [] for _ in range(n_frames)]
         for objName in objNameList:
             for objgrp in self.objBBMaskSeqGrpDict[objName]:
                 for bbx,msk,ind in objgrp:
@@ -405,8 +416,10 @@ class GroupSequence(TrackSequence):
 
         combinedMasks = [imu.combineMasks(msks) for msks in seqMasks]
 
-        if writeToDirectory is not None:
-            imu.writeMasksToDirectory(combinedMasks,writeToDirectory,cleanDirectory=cleanDirectory)
+        if writeMasksToDirectory is not None:
+            imu.writeMasksToDirectory(combinedMasks,writeMasksToDirectory,
+                                       minPadLength=5,
+                                       cleanDirectory=cleanDirectory)
         
         if inPlace:
             self.combinedMaskList = combinedMasks

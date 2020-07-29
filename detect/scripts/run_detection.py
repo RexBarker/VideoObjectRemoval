@@ -3,12 +3,14 @@ import cv2
 from glob import glob
 import ObjectDetection.imutils as imu
 from ObjectDetection.detect import DetectSingle, TrackSequence, GroupSequence
+from ObjectDetection.inpaintRemote import InpaintRemote
 
 test_imutils = False
 test_single = False 
 test_sequence = False 
-test_grouping = True
-test_maskoutput = True
+test_grouping = False
+test_maskoutput = False
+test_remoteInpaint = True
 
 if test_imutils:
     bbtest = [0.111, 0.123, 0.211, 0.312]
@@ -43,9 +45,24 @@ if test_grouping:
     groupseq.groupObjBBMaskSequence()
     res = groupseq.get_groupedResults(getSpecificObjNames='person')
 
-if test_maskoutput:
+if test_grouping and test_maskoutput:
     groupseq.filter_ObjBBMaskSeq(objNameList='person',)
-    groupseq.combine_MaskSequence(writeToDirectory="../data/Colomar/masks/",cleanDirectory=True)
+    groupseq.combine_MaskSequence(cleanDirectory=True,
+        writeImagesToDirectory="../data/Colomar/toInpaint/frames",
+        writeMasksToDirectory="../data/Colomar/toInpaint/masks")
+
+if test_remoteInpaint:
+    rinpaint = InpaintRemote() 
+    rinpaint.connectInpaint()
+    res = rinpaint.runInpaint(
+        frameDirPath="/home/appuser/data/Colomar/toInpaint/frames",
+        maskDirPath="/home/appuser/data/Colomar/toInpaint/masks")
+    
+    if res:
+        print("seemed to work!")
+
+    rinpaint.disconnectInpaint()
+
 
 
 print("done")
