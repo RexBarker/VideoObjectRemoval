@@ -2,7 +2,7 @@ FROM nvidia/cuda:10.1-cudnn7-devel
 
 ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && apt-get install -y \
-	python3-opencv ca-certificates python3-dev python3-virtualenv git wget sudo  \
+	ca-certificates python3-dev python3-virtualenv git wget sudo  \
 	cmake ninja-build protobuf-compiler libprotobuf-dev openssh-server  \
         vim ffmpeg && \
   rm -rf /var/lib/apt/lists/*
@@ -44,12 +44,15 @@ ARG TORCH_CUDA_ARCH_LIST="Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta
 ENV TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"
 
 RUN pip install --user -e detectron2_repo
-RUN pip install --user jupyter scipy pandas scikit-learn ipykernel
+RUN pip install --user jupyter scipy pandas scikit-learn ipykernel opencv-python paramiko 
 
 # Set a fixed model cache directory.
 ENV FVCORE_CACHE="/tmp"
 
 # working location
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
 WORKDIR /home/appuser/
 
 #CMD ["/usr/sbin/sshd","-D"]

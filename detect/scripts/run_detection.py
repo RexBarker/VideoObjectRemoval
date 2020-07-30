@@ -76,18 +76,19 @@ if test_remoteInpaint:
                                  kwargs={'frameDirPath':frameDirPath,'maskDirPath':maskDirPath})
     trd1.start() 
 
-    print("working:",end='')
+    print("working:",end='',flush=True)
     while trd1.is_alive():
-        print('.',end='')
+        print('.',end='',flush=True)
         sleep(1)
 
     print("\nfinished")
-    stdin,stdout,stderr = trd1.join()
-    for l in stdout:
-        print(l)
-
     rinpaint.disconnectInpaint()
 
-
+    stdin,stdout,stderr = trd1.join()
+    ok = False
+    for l in stdout:
+        if "Propagation has been finished" in l: 
+            ok = True
+        print(l.strip())
 
 print("done")
