@@ -1,5 +1,7 @@
 # Utilities to run DeepFlow Inpaint from remote container
+from time import time
 from paramiko import SSHClient, AutoAddPolicy
+from threading import Thread
 
 # primarily utilize parent methods, where possible
 class InpaintRemote(SSHClient):
@@ -49,12 +51,12 @@ class InpaintRemote(SSHClient):
                             f"--img_size {inputHeight} {inputWidth} " + \
                             optionsString
         
-        stdin, stdout, stderr = self.exec_command(commandScript)
+        start = time()
+        stdin, stdout, stderr = self.exec_command(commandScript)  # non-blocking call
+        exit_status = stdout.channel.recv_exit_status() # blocking call
+        finish = time()
 
-        if stderr:
-            raise Exception("Something went wrong:\n" + " ".join(stderr))
-
-        return True
+        return (stdin, stdout, stderr)
 
 if __name__ == "__main__":
     pass

@@ -1,9 +1,23 @@
 # Test image detection implementation
 import cv2
+from time import time, sleep
 from glob import glob
 import ObjectDetection.imutils as imu
 from ObjectDetection.detect import DetectSingle, TrackSequence, GroupSequence
 from ObjectDetection.inpaintRemote import InpaintRemote
+from threading import Thread
+
+class ThreadWithReturnValue(Thread):
+    def __init__(self, group=None, target=None, name=None,
+                 args=(), kwargs={}, Verbose=None):
+        Thread.__init__(self, group, target, name, args, kwargs)
+        self._return = None
+    def run(self):
+        if self._target is not None:
+            self._return = self._target(*self._args, **self._kwargs)
+    def join(self, *args):
+        Thread.join(self, *args)
+        return self._return
 
 test_imutils = False
 test_single = False 
@@ -54,12 +68,23 @@ if test_grouping and test_maskoutput:
 if test_remoteInpaint:
     rinpaint = InpaintRemote() 
     rinpaint.connectInpaint()
-    res = rinpaint.runInpaint(
-        frameDirPath="/home/appuser/data/Colomar/toInpaint/frames",
-        maskDirPath="/home/appuser/data/Colomar/toInpaint/masks")
-    
-    if res:
-        print("seemed to work!")
+
+    frameDirPath="/home/appuser/data/Colomar/toInpaint/frames"
+    maskDirPath="/home/appuser/data/Colomar/toInpaint/masks"
+
+    trd1 = ThreadWithReturnValue(target=rinpaint.runInpaint,
+                                 kwargs={'frameDirPath':frameDirPath,'maskDirPath':maskDirPath})
+    trd1.start() 
+
+    print("working:",end='')
+    while trd1.is_alive():
+        print('.',end='')
+        sleep(1)
+
+    print("\nfinished")
+    stdin,stdout,stderr = trd1.join()
+    for l in stdout:
+        print(l)
 
     rinpaint.disconnectInpaint()
 
