@@ -109,22 +109,30 @@ print("Running on:", DEVICE)
 
 # Start Dash
 app = dash.Dash(__name__)
-#application = app.server
 server = app.server  # Expose the server variable for deployments
 
 app.layout = html.Div(className='container', children=[
     Row(html.H1("Video Object Removal App")),
 
-    Row(html.P("Input Image URL:")),
+    Row(html.P("Input Directory Path:")),
     Row([
         Column(width=8, children=[
-            dcc.Input(id='input-url', style={'width': '100%'}, placeholder='Insert URL...'),
+            dcc.Input(id='input-dirpath', style={'width': '100%'}, placeholder='Insert dirpath...'),
         ]),
-        Column(html.Button("Run DETR", id='button-run', n_clicks=0), width=2),
-        Column(html.Button("Random Image", id='button-random', n_clicks=0), width=2)
+        Column(html.Button("Run Single", id='button-single', n_clicks=0), width=2),
+        Column(html.Button("Run Sequence", id='button-sequence', n_clicks=0), width=2)
     ]),
 
-    Row(dcc.Graph(id='model-output', style={"height": "70vh"})),
+    Row(html.P('  ')), # space holder
+
+    Row([ 
+        Column(width=2, children=[ html.P('Frame number:')]),
+        Column(width=7, children=[
+            dcc.Slider(
+                id='slider-framenums', min=0, max=100, step=1, value=0, 
+                marks={0: '0', 100: '100'})
+        ])
+    ]),
 
     Row([
         Column(width=7, children=[
@@ -146,36 +154,46 @@ app.layout = html.Div(className='container', children=[
                 id='slider-confidence', min=0, max=1, step=0.05, value=0.7, 
                 marks={0: '0', 1: '1'})
         ])
-    ])
+    ]),
+
+    Row(dcc.Graph(id='model-output', style={"height": "70vh"}))
 ])
 
 
 @app.callback(
-    [Output('button-run', 'n_clicks'),
-     Output('input-url', 'value')],
-    [Input('button-random', 'n_clicks')],
-    [State('button-run', 'n_clicks')])
-def randomize(random_n_clicks, run_n_clicks):
-    return run_n_clicks+1, RANDOM_URLS[random_n_clicks%len(RANDOM_URLS)]
+    [Output('button-single', 'n_clicks'),
+     Output('slider-framenums','max'),
+     Output('slider-framenums','marks'),
+     Output('input-dirpath', 'value')],
+    [Input('button-sequence', 'n_clicks')],
+    [State('button-single', 'n_clicks')])
+def run_sequence(random_n_clicks, run_n_clicks):
+    #return run_n_clicks+1, RANDOM_URLS[random_n_clicks%len(RANDOM_URLS)]
+    dirpath = "/home/appuser/data/Colomar/frames" 
+    fnames = getImageFileNames(dirpath)
+    fnmax = len(fnames)-1
+    marks = {0: '0', fnmax: f"{fnmax}"}
+    return run_n_clicks+1, fnmax, marks, dirpath
 
 
 @app.callback(
     [Output('model-output', 'figure'),
      Output('slider-iou', 'disabled')],
-    [Input('button-run', 'n_clicks'),
-     Input('input-url', 'n_submit'),
+    [Input('button-single', 'n_clicks'),
+     Input('input-dirpath', 'n_submit'),
      Input('slider-iou', 'value'),
+     Input('slider-framenums','value'),
      Input('slider-confidence', 'value'),
      Input('checklist-nms', 'value')],
-    [State('input-url', 'value')])
-def run_model(n_clicks, n_submit, iou, confidence, checklist, url):
+    [State('input-dirpath', 'value')])
+def run_model(n_clicks, n_submit, iou, framenum, confidence, checklist, dirpath):
     apply_nms = 'enabled' in checklist
-    fnames = getImageFileNames(url)
+    fnames = getImageFileNames(dirpath)
     try:
         #DGC im = Image.open(requests.get(url, stream=True).raw)
-        im = Image.open(fnames[0])
+        im = Image.open(fnames[framenum])
     except:
-        return go.Figure().update_layout(title='Incorrect URL')
+        return go.Figure().update_layout(title='Incorrect dirpath')
 
     tstart = time.time()
     

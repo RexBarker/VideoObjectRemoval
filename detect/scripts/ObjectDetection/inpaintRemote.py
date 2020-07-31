@@ -17,6 +17,9 @@ class InpaintRemote(SSHClient):
                    'optionsString' : "--FlowNet2 --DFC --ResNet101 --Propagation"
                  }
     
+    def __del__(self):
+        self.close()
+    
     def connectInpaint(self,hostname='inpaint', username='appuser', password='appuser'):
         self.connect(hostname,username=username,password=password)
         self.isConnected = True
