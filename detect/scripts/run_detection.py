@@ -20,11 +20,11 @@ class ThreadWithReturnValue(Thread):
         return self._return
 
 test_imutils = False
-test_single = False 
-test_sequence = False 
+test_single = True 
+test_sequence = False
 test_grouping = False
 test_maskoutput = False
-test_remoteInpaint = True
+test_remoteInpaint = False
 
 if test_imutils:
     bbtest = [0.111, 0.123, 0.211, 0.312]

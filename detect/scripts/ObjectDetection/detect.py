@@ -92,11 +92,14 @@ class DetectSingle:
 
         outputs = self.predictor(self.im)
         classes = list(outputs['instances'].pred_classes.cpu().numpy()) 
+        scores = list(outputs['instances'].scores.cpu().numpy()) 
         objects = [self.thing_classes[c] in selObjectNames for c in classes]
 
         self.outputs = outputs
         self.masks = [ outputs['instances'].pred_masks[i].cpu().numpy() for i,o in enumerate(objects) if o ]
         self.bboxes = [ imu.bboxToList(outputs['instances'].pred_boxes[i]) for i,o in enumerate(objects) if o ]
+        self.scores = [ scores[i] for i,o in enumerate(objects) if o ]
+
         self.selClassList = [ classes[i] for i,o in enumerate(objects) if o ]
     
     def get_results(self,getImage=True, getMasks=True, getBBoxes=True, getClasses=True):

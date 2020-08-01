@@ -12,8 +12,9 @@ import plotly.graph_objects as go
 from PIL import Image
 import requests
 
-from model import detect, filter_boxes, detr, transform
-from model import CLASSES, DEVICE
+#from model import detect, filter_boxes, detr, transform
+from model import detect_scores_bboxes_classes, filter_boxes, detr
+from model import CLASSES #, DEVICE
 
 # ----------
 # DGC additions
@@ -105,7 +106,7 @@ COLORS = ['#fe938c','#86e7b8','#f9ebe0','#208aae','#fe4a49',
           '#291711', '#5f4b66', '#b98b82', '#87f5fb', '#63326e'] * 50
 
 RANDOM_URLS = open('random_urls.txt').read().split('\n')[:-1]
-print("Running on:", DEVICE)
+#print("Running on:", DEVICE)
 
 # Start Dash
 app = dash.Dash(__name__)
@@ -157,6 +158,7 @@ app.layout = html.Div(className='container', children=[
     ]),
 
     Row(dcc.Graph(id='model-output', style={"height": "70vh"}))
+
 ])
 
 
@@ -189,30 +191,36 @@ def run_sequence(random_n_clicks, run_n_clicks):
 def run_model(n_clicks, n_submit, iou, framenum, confidence, checklist, dirpath):
     apply_nms = 'enabled' in checklist
     fnames = getImageFileNames(dirpath)
+    imgfile = fnames[framenum]
     try:
         #DGC im = Image.open(requests.get(url, stream=True).raw)
-        im = Image.open(fnames[framenum])
+        im = Image.open(imgfile)
     except:
         return go.Figure().update_layout(title='Incorrect dirpath')
 
     tstart = time.time()
     
-    scores, boxes = detect(im, detr, transform, device=DEVICE)
-    scores, boxes = filter_boxes(scores, boxes, confidence=confidence, iou=iou, apply_nms=apply_nms)
+    #scores, boxes = detect(im, detr, transform, device=DEVICE)
+    scores, boxes, selClasses = detect_scores_bboxes_classes(imgfile, detr)
+    #scores, boxes = filter_boxes(scores, boxes, confidence=confidence, iou=iou, apply_nms=apply_nms)
     
-    scores = scores.data.numpy()
-    boxes = boxes.data.numpy()
+    #scores = scores.data.numpy()
+    #boxes = boxes.data.numpy()
 
     tend = time.time()
 
     fig = pil_to_fig(im, showlegend=True, title=f'DETR Predictions ({tend-tstart:.2f}s)')
     existing_classes = set()
 
-    for i in range(boxes.shape[0]):
-        class_id = scores[i].argmax()
+    #for i in range(boxes.shape[0]):
+    for confidence,bbx,class_id in zip(scores,boxes,selClasses):
+        x0, y0, x1, y1 = bbx 
         label = CLASSES[class_id]
-        confidence = scores[i].max()
-        x0, y0, x1, y1 = boxes[i]
+        #class_id = scores[i].argmax()
+        #label = CLASSES[class_id]
+        #confidence = scores[i].max()
+        #x0, y0, x1, y1 = boxes[i]
+
 
         # only display legend when it's not in the existing classes
         showlegend = label not in existing_classes
