@@ -124,16 +124,20 @@ app.layout = html.Div(className='container', children=[
         Column(html.Button("Run Sequence", id='button-sequence', n_clicks=0), width=2)
     ]),
 
-    Row(html.P('  ')), # space holder
+    html.Hr(),
 
     Row([ 
-        Column(width=2, children=[ html.P('Frame number:')]),
-        Column(width=7, children=[
-            dcc.Slider(
-                id='slider-framenums', min=0, max=100, step=1, value=0, 
-                marks={0: '0', 100: '100'})
-        ])
-    ]),
+         Column(width=2, children=[ html.P('Frame number:')]),
+         Column(width=10, children=[ 
+                dcc.Input(id='input-framenmin',type='number',value=0),
+                dcc.RangeSlider(
+                    id='slider-framenums', min=0, max=100, step=1, value=[0,100],
+                    marks={0: '0', 100: '100'}, allowCross=False),
+                dcc.Input(id='input-framenmax',type='number',value=100)
+            ], style={"display": "grid", "grid-template-columns": "10% 70% 10%"}),
+    ],style={'width':"100%"}),
+    
+    html.Hr(),
 
     Row([
         Column(width=7, children=[
@@ -166,6 +170,7 @@ app.layout = html.Div(className='container', children=[
     [Output('button-single', 'n_clicks'),
      Output('slider-framenums','max'),
      Output('slider-framenums','marks'),
+     Output('slider-framenums','value'),
      Output('input-dirpath', 'value')],
     [Input('button-sequence', 'n_clicks')],
     [State('button-single', 'n_clicks')])
@@ -175,7 +180,7 @@ def run_sequence(random_n_clicks, run_n_clicks):
     fnames = getImageFileNames(dirpath)
     fnmax = len(fnames)-1
     marks = {0: '0', fnmax: f"{fnmax}"}
-    return run_n_clicks+1, fnmax, marks, dirpath
+    return run_n_clicks+1, fnmax, marks, [0,fnmax], dirpath
 
 
 @app.callback(
@@ -188,10 +193,10 @@ def run_sequence(random_n_clicks, run_n_clicks):
      Input('slider-confidence', 'value'),
      Input('checklist-nms', 'value')],
     [State('input-dirpath', 'value')])
-def run_model(n_clicks, n_submit, iou, framenum, confidence, checklist, dirpath):
+def run_model(n_clicks, n_submit, iou, framerange, confidence, checklist, dirpath):
     apply_nms = 'enabled' in checklist
     fnames = getImageFileNames(dirpath)
-    imgfile = fnames[framenum]
+    imgfile = fnames[framerange[0]]
     try:
         #DGC im = Image.open(requests.get(url, stream=True).raw)
         im = Image.open(imgfile)
