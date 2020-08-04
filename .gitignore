@@ -2,6 +2,7 @@
 **.vscode
 
 # general files
+app/static/**
 data/**
 *.ipynb
 *.pyc

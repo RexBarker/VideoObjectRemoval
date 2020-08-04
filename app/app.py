@@ -4,20 +4,23 @@ import base64
 from io import BytesIO
 import time
 
+import flask
+from flask import Flask, Response
 import dash
 from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objects as go
 from PIL import Image
-import requests
+#KILL import requests
 
-#from model import detect, filter_boxes, detr, transform
+#KILL from model import detect, filter_boxes, detr, transform
 from model import detect_scores_bboxes_classes, filter_boxes, detr
-from model import CLASSES #, DEVICE
+from model import CLASSES, DEVICE 
+print(f"ObjectDetect loaded, using DEVICE={DEVICE}")
 
 # ----------
-# DGC additions
+# Helper functions 
 def getImageFileNames(dirPath):
     if not os.path.isdir(dirPath):
         return go.Figure().update_layout(title='Incorrect Directory Path!')
@@ -27,12 +30,32 @@ def getImageFileNames(dirPath):
         if len(fnames) > 0: break
 
     if not fnames:
-        return go.Figure().update_layout(title='No files found!')
+        go.Figure().update_layout(title='No files found!')
+        return None
     else:
         return fnames
 
-# ----------
+#def htmlVideo(path,title=None,vtype='mp4',width=720):
+#    assert vtype in ('mp4','mov','avi'), f"Incorrect video type specified: {vtype}"
+#    if title is None:
+#        title = path.split('/')[-1].split('.')[0]
+#
+#    html = f'''
+#        <!doctype html>
+#        <html>
+#            <head>
+#                <title>{title}</title>
+#            </head>
+#            <body>
+#                <video width="{width}" controls>
+#                    <source src="{path}" type="video/{vtype}">
+#                </video>
+#            </body>
+#        </html>
+#    '''
+#    return html
 
+# ----------
 # Dash component wrappers
 def Row(children=None, **kwargs):
     return html.Div(children, className="row", **kwargs)
@@ -45,7 +68,7 @@ def Column(children=None, width=1, **kwargs):
 
     return html.Div(children, className=f"{nb_map[width]} columns", **kwargs)
 
-
+# ----------
 # plotly.py helper functions
 def pil_to_b64(im, enc="png"):
     io_buf = BytesIO()
@@ -105,8 +128,6 @@ def add_bbox(fig, x0, y0, x1, y1,
 COLORS = ['#fe938c','#86e7b8','#f9ebe0','#208aae','#fe4a49', 
           '#291711', '#5f4b66', '#b98b82', '#87f5fb', '#63326e'] * 50
 
-RANDOM_URLS = open('random_urls.txt').read().split('\n')[:-1]
-#print("Running on:", DEVICE)
 
 # Start Dash
 app = dash.Dash(__name__)
@@ -117,17 +138,18 @@ app.layout = html.Div(className='container', children=[
 
     Row(html.P("Input Directory Path:")),
     Row([
-        Column(width=8, children=[
+        Column(width=6, children=[
             dcc.Input(id='input-dirpath', style={'width': '100%'}, placeholder='Insert dirpath...'),
         ]),
         Column(html.Button("Run Single", id='button-single', n_clicks=0), width=2),
-        Column(html.Button("Run Sequence", id='button-sequence', n_clicks=0), width=2)
+        Column(html.Button("Run Sequence", id='button-sequence', n_clicks=0), width=2),
+        Column(html.Button("Run Inpaint", id='button-inpaint', n_clicks=0), width=2)
     ]),
 
     html.Hr(),
 
     Row([ 
-         Column(width=2, children=[ html.P('Frame number:')]),
+         Column(width=2, children=[ html.P('Frame range:')]),
          Column(width=10, children=[ 
                 dcc.Input(id='input-framenmin',type='number',value=0),
                 dcc.RangeSlider(
@@ -161,71 +183,119 @@ app.layout = html.Div(className='container', children=[
         ])
     ]),
 
-    Row(dcc.Graph(id='model-output', style={"height": "70vh"}))
+    Row(dcc.Graph(id='model-output', style={"height": "70vh"})),
 
+    html.Hr(),
+
+    html.Video(id='sequence-output',src='/static/test.mp4',controls=True,style={"height": "70vh"})
 ])
 
 
+# update_framenum_minmax()
+# purpose:  to update min/max boxes of the slider 
 @app.callback(
-    [Output('button-single', 'n_clicks'),
-     Output('slider-framenums','max'),
+    [Output('input-framenmin','value'),
+     Output('input-framenmax','value')],
+    [Input('slider-framenums','value')]
+)
+def update_framenum_minmax(framenumrange):
+    return framenumrange[0], framenumrange[1]
+
+
+@app.callback(
+    [Output('slider-framenums','max'),
      Output('slider-framenums','marks'),
      Output('slider-framenums','value'),
-     Output('input-dirpath', 'value')],
-    [Input('button-sequence', 'n_clicks')],
-    [State('button-single', 'n_clicks')])
-def run_sequence(random_n_clicks, run_n_clicks):
-    #return run_n_clicks+1, RANDOM_URLS[random_n_clicks%len(RANDOM_URLS)]
-    dirpath = "/home/appuser/data/Colomar/frames" 
-    fnames = getImageFileNames(dirpath)
-    fnmax = len(fnames)-1
-    marks = {0: '0', fnmax: f"{fnmax}"}
-    return run_n_clicks+1, fnmax, marks, [0,fnmax], dirpath
+     Output('input-dirpath','value')    ],
+    [Input('button-single','n_clicks'),
+     Input('button-sequence','n_clicks'),
+     Input('button-inpaint', 'n_clicks')],
+    [State('input-dirpath', 'value'),
+     State('slider-framenums','max'),
+     State('slider-framenums','marks'),
+     State('slider-framenums','value')  ]
+)
+def update_dirpath(nc_single, nc_sequence, nc_inpaint, s_dirpath, s_fnmax, s_fnmarks, s_fnvalue):
+    if s_dirpath is None:
+        s_dirpath = "/home/appuser/data/Colomar/frames"  #temporary fix
+    dirpath = s_dirpath
+    fnames = getImageFileNames(s_dirpath)
+    if fnames:
+        fnmax = len(fnames)-1
+        if fnmax != s_fnmax: 
+            fnmarks = {0: '0', fnmax: f"{fnmax}"}
+            fnvalue = [0, fnmax]
+        else:
+            fnmarks = s_fnmarks
+            fnvalue = s_fnvalue
+    else:
+        fnmax = s_fnmax
+        fnmarks = s_fnmarks
+        fnvalue = s_fnvalue
+        
+    return fnmax, fnmarks, fnvalue, dirpath
+
+
+# update_framenum_slider()
+# purpose:  to update position of the slider 
+#@app.callback(
+#    [Output('slider-framenums','value')],
+#    [Input('input-framenmin','value'),
+#     Input('input-framenmax','value')]
+#)
+#def update_framenum_slider(framenummin,framnummax):
+#    return [framenummin, framnummax] 
+
+
+#@app.callback(
+#    [Output('button-single', 'n_clicks'),
+#     Output('slider-framenums','max'),
+#     Output('slider-framenums','marks'),
+#     Output('slider-framenums','value'),
+#     Output('input-dirpath', 'value')],
+#    [Input('button-sequence', 'n_clicks')],
+#    [State('button-single', 'n_clicks')])
+#def run_sequence(random_n_clicks, run_n_clicks):
+#    #return run_n_clicks+1, RANDOM_URLS[random_n_clicks%len(RANDOM_URLS)]
+#    dirpath = "/home/appuser/data/Colomar/frames" 
+#    fnames = getImageFileNames(dirpath)
+#    fnmax = len(fnames)-1
+#    marks = {0: '0', fnmax: f"{fnmax}"}
+#    return run_n_clicks+1, fnmax, marks, [0,fnmax], dirpath
 
 
 @app.callback(
     [Output('model-output', 'figure'),
      Output('slider-iou', 'disabled')],
-    [Input('button-single', 'n_clicks'),
-     Input('input-dirpath', 'n_submit'),
-     Input('slider-iou', 'value'),
-     Input('slider-framenums','value'),
-     Input('slider-confidence', 'value'),
-     Input('checklist-nms', 'value')],
-    [State('input-dirpath', 'value')])
-def run_model(n_clicks, n_submit, iou, framerange, confidence, checklist, dirpath):
+    [Input('button-single', 'n_clicks')],
+    [State('input-dirpath', 'value'),
+     State('slider-iou', 'value'),
+     State('slider-framenums','value'),
+     State('slider-confidence', 'value'),
+     State('checklist-nms', 'value')],
+)
+def run_single(n_clicks, dirpath, iou, framerange, confidence, checklist):
     apply_nms = 'enabled' in checklist
-    fnames = getImageFileNames(dirpath)
-    imgfile = fnames[framerange[0]]
-    try:
-        #DGC im = Image.open(requests.get(url, stream=True).raw)
+    if dirpath is not None and os.path.isdir(dirpath):
+        fnames = getImageFileNames(dirpath)
+        imgfile = fnames[framerange[0]]
         im = Image.open(imgfile)
-    except:
-        return go.Figure().update_layout(title='Incorrect dirpath')
+    else: 
+        go.Figure().update_layout(title='Incorrect dirpath')
+        im = Image.new('RGB',(640,480))
+        fig = pil_to_fig(im, showlegend=True, title='No Image')
+        return fig, not apply_nms
 
     tstart = time.time()
-    
-    #scores, boxes = detect(im, detr, transform, device=DEVICE)
     scores, boxes, selClasses = detect_scores_bboxes_classes(imgfile, detr)
-    #scores, boxes = filter_boxes(scores, boxes, confidence=confidence, iou=iou, apply_nms=apply_nms)
-    
-    #scores = scores.data.numpy()
-    #boxes = boxes.data.numpy()
-
     tend = time.time()
 
     fig = pil_to_fig(im, showlegend=True, title=f'DETR Predictions ({tend-tstart:.2f}s)')
     existing_classes = set()
 
-    #for i in range(boxes.shape[0]):
     for confidence,bbx,class_id in zip(scores,boxes,selClasses):
         x0, y0, x1, y1 = bbx 
         label = CLASSES[class_id]
-        #class_id = scores[i].argmax()
-        #label = CLASSES[class_id]
-        #confidence = scores[i].max()
-        #x0, y0, x1, y1 = boxes[i]
-
 
         # only display legend when it's not in the existing classes
         showlegend = label not in existing_classes
@@ -242,5 +312,23 @@ def run_model(n_clicks, n_submit, iou, framerange, confidence, checklist, dirpat
     return fig, not apply_nms
 
 
+# simply forces refresh of video object
+@server.after_request
+@server.route('/static/<path:path>')
+def serve_video(inpath):
+    return inpath
+
+#@app.callback(
+#    [Output()]
+#    [Input('download-button')]
+#)
+#def download_video(n_clicks):
+#    root_dir = os.getcwd()
+#    path='test.mov'
+#    return flask.send_from_directory(os.path.join(root_dir,'static'),path)
+
+
+
+# ---------------------------------------------------------------------
 if __name__ == '__main__':
     app.run_server(debug=True,host='0.0.0.0')

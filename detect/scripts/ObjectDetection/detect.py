@@ -20,6 +20,10 @@ from detectron2.config import get_cfg
 from detectron2.utils.visualizer import Visualizer
 from detectron2.data import MetadataCatalog
 
+# plotting utilities
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
 # module specific library
 import ObjectDetection.imutils as imu
 
@@ -34,6 +38,7 @@ class DetectSingle:
         self.cfg = None
         self.predictor = None
         self.things = None
+        self.DEVICE = None
 
         # instance specific variables
         self.im = None
@@ -68,6 +73,7 @@ class DetectSingle:
         self.things = MetadataCatalog.get(self.cfg.DATASETS.TRAIN[0])
         self.thing_classes = self.things.thing_classes
         self.thing_colors = self.things.thing_colors
+        self.DEVICE = self.predictor.model.device.type + str(self.predictor.model.device.index)
 
         if self.selObjNames is None:
             self.selObjNames = self.thing_classes
@@ -210,6 +216,7 @@ class TrackSequence(DetectSingle):
         if getClasses: res['classes'] = self.objclasslist
 
         return res  
+    
 
 # Class GroupSequence
 # - creates the grouping of a sequence by object based on class
@@ -430,6 +437,57 @@ class GroupSequence(TrackSequence):
         else:
             return combinedMasks
 
+
+    def get_animationObject(self,
+                            getSpecificObjNames=None,
+                            framerange=None,
+                            useMasks=False,
+                            toHTML=True,
+                            figsize=(10,10),
+                            interval=50,
+                            repeat_delay=1000):
+        """
+            Purpose produce an animation object of the masked frames 
+            returns an animation object to be rendered with HTML()
+        """
+        if getSpecificObjNames is not None:
+            if not isinstance(getSpecificObjNames,list):
+                getSpecificObjNames = [getSpecificObjNames]
+
+            getNames = [ n for n in self.objBBMaskSeqGrpDict.keys() if n in getSpecificObjNames ]
+        else:
+            getNames = list(self.objBBMaskSeqGrpDict.keys())
+        
+        if framerange is None:
+            framemin,framemax = 0, len(self.imglist)-1
+        else:
+            framemin,framemax = framerange
+
+        fig = plt.figure(figsize=figsize)
+
+        # combine and write masks
+        if useMasks:
+            seqMasks = [ [] for _ in range(n_frames)]
+            for objName in objNameList:
+                for objgrp in self.objBBMaskSeqGrpDict[objName]:
+                    for bbx,msk,ind in objgrp:
+                        seqMasks[ind].append(msk)
+
+        outims = []
+        for i,im in enumerate(self.imglist):
+            if useMasks:
+                msks = seqMasks[i] 
+                for gi,msk in enumerate(msks):
+                    im = imu.maskImage(im,msk,self.thing_colors[gi])
+                
+            im = im[:,:,::-1]  # convert from BGR to RGB
+            renderplt = plt.imshow(im,animated=True)
+            outims.append([renderplt])
+        
+        ani = animation.ArtistAnimation(fig, outims, interval=interval, blit=True,
+                                repeat_delay=repeat_delay)
+
+        return ani.to_html5_video() if useHTML else ani
 
 
 if __name__ == "__main__":

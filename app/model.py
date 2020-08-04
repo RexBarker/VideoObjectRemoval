@@ -6,11 +6,6 @@ sys.path.insert(1,libpath)
 import ObjectDetection.imutils as imu
 from ObjectDetection.detect import DetectSingle, TrackSequence, GroupSequence
 
-#import numpy as np
-#import torch
-#from torchvision.ops.boxes import batched_nms
-#import torchvision.transforms as T
-
 
 # for output bounding box post-processing
 def box_cxcywh_to_xyxy(x):
@@ -26,22 +21,9 @@ def rescale_bboxes(out_bbox, size):
     return b
 
 
-#def detect(im, model, transform, device='cpu'):
-#    # mean-std normalize the input image (batch-size: 1)
-#    img = transform(im).unsqueeze(0).to(device)
-#    model.to(device)
-#    # propagate through the model
-#    outputs = model(img)
-#    # keep only predictions with confidence above threshold
-#    probas = outputs['pred_logits'].softmax(-1)[0, :, :-1].cpu()
-#    # convert boxes from [0; 1] to image scales
-#    bboxes_scaled = rescale_bboxes(outputs['pred_boxes'][0, ].cpu(), im.size)
-#    return probas, bboxes_scaled
-
 def detect_scores_bboxes_classes(im,model):
     detr.predict(im)
     return detr.scores, detr.bboxes, detr.selClassList 
-    
 
 
 def filter_boxes(scores, boxes, confidence=0.7, apply_nms=True, iou=0.5):
@@ -76,9 +58,9 @@ def filter_boxes(scores, boxes, confidence=0.7, apply_nms=True, iou=0.5):
 
 
 # Load model
-#DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 detr = DetectSingle()
 CLASSES = detr.thing_classes
+DEVICE = detr.DEVICE 
 #detr = torch.hub.load('facebookresearch/detr', 'detr_resnet50', pretrained=True)
 #detr.eval().to(DEVICE)
 
