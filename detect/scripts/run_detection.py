@@ -20,9 +20,9 @@ class ThreadWithReturnValue(Thread):
         return self._return
 
 test_imutils = False
-test_single = True 
+test_single = False
 test_sequence = False
-test_grouping = False
+test_grouping = True
 test_maskoutput = False
 test_remoteInpaint = False
 
@@ -58,6 +58,7 @@ if test_grouping:
     groupseq.load_images(filelist=fnames)
     groupseq.groupObjBBMaskSequence()
     res = groupseq.get_groupedResults(getSpecificObjNames='person')
+    groupseq.create_animationObject(MPEGfile="../data/Colomar/result.mp4")
 
 if test_grouping and test_maskoutput:
     groupseq.filter_ObjBBMaskSeq(objNameList='person',)

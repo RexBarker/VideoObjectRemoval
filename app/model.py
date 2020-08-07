@@ -58,7 +58,8 @@ def filter_boxes(scores, boxes, confidence=0.7, apply_nms=True, iou=0.5):
 
 
 # Load model
-detr = DetectSingle()
+detr = GroupSequence() 
+#detr = DetectSingle() 
 CLASSES = detr.thing_classes
 DEVICE = detr.DEVICE 
 #detr = torch.hub.load('facebookresearch/detr', 'detr_resnet50', pretrained=True)

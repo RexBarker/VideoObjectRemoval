@@ -235,6 +235,11 @@ class GroupSequence(TrackSequence):
         self.objBBMaskSeqDict = None
         self.objBBMaskSeqGrpDict = None
         self.combinedMaskList = None
+        self.MPEGconfig = {
+            'fps': 50,
+            'metadata': {'artist': "appuser"},
+            'bitrate' : 1800
+        }
 
     @staticmethod
     def __assignBBMaskToGroupByDistIndex(attainedGroups, trialBBs, trialMasks, index=None, widthFactor=2.0):
@@ -438,13 +443,15 @@ class GroupSequence(TrackSequence):
             return combinedMasks
 
 
-    def get_animationObject(self,
+    def create_animationObject(self,
                             getSpecificObjNames=None,
                             framerange=None,
-                            useMasks=False,
-                            toHTML=True,
+                            useMasks=True,
+                            toHTML=False,
+                            MPEGfile=None,
+                            MPEGconfig=None,
                             figsize=(10,10),
-                            interval=50,
+                            interval=30,
                             repeat_delay=1000):
         """
             Purpose produce an animation object of the masked frames 
@@ -464,11 +471,12 @@ class GroupSequence(TrackSequence):
             framemin,framemax = framerange
 
         fig = plt.figure(figsize=figsize)
+        plt.axis('off')
 
         # combine and write masks
         if useMasks:
-            seqMasks = [ [] for _ in range(n_frames)]
-            for objName in objNameList:
+            seqMasks = [ [] for _ in range(framemin,framemax+1)]
+            for objName in getNames:
                 for objgrp in self.objBBMaskSeqGrpDict[objName]:
                     for bbx,msk,ind in objgrp:
                         seqMasks[ind].append(msk)
@@ -487,7 +495,19 @@ class GroupSequence(TrackSequence):
         ani = animation.ArtistAnimation(fig, outims, interval=interval, blit=True,
                                 repeat_delay=repeat_delay)
 
-        return ani.to_html5_video() if useHTML else ani
+        if MPEGfile is not None:
+            # expecting path to write file
+            assert os.path.isdir(os.path.dirname(MPEGfile)), f"Could not write to path {os.path.dirname(MPEGfile)}"
+
+            if MPEGconfig is None:
+                MPEGconfig = self.MPEGconfig
+
+            mpegWriter = animation.writers['ffmpeg']
+            writer = mpegWriter(**MPEGconfig)
+            ani.save(MPEGfile,writer=writer)
+
+        # return html object, or just animation object  
+        return ani.to_html5_video() if toHTML else ani
 
 
 if __name__ == "__main__":

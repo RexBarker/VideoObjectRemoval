@@ -4,17 +4,15 @@ import base64
 from io import BytesIO
 import time
 
-import flask
-from flask import Flask, Response
+#import flask
+from flask import send_file, make_response 
 import dash
 from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objects as go
 from PIL import Image
-#KILL import requests
 
-#KILL from model import detect, filter_boxes, detr, transform
 from model import detect_scores_bboxes_classes, filter_boxes, detr
 from model import CLASSES, DEVICE 
 print(f"ObjectDetect loaded, using DEVICE={DEVICE}")
@@ -35,25 +33,6 @@ def getImageFileNames(dirPath):
     else:
         return fnames
 
-#def htmlVideo(path,title=None,vtype='mp4',width=720):
-#    assert vtype in ('mp4','mov','avi'), f"Incorrect video type specified: {vtype}"
-#    if title is None:
-#        title = path.split('/')[-1].split('.')[0]
-#
-#    html = f'''
-#        <!doctype html>
-#        <html>
-#            <head>
-#                <title>{title}</title>
-#            </head>
-#            <body>
-#                <video width="{width}" controls>
-#                    <source src="{path}" type="video/{vtype}">
-#                </video>
-#            </body>
-#        </html>
-#    '''
-#    return html
 
 # ----------
 # Dash component wrappers
@@ -70,6 +49,7 @@ def Column(children=None, width=1, **kwargs):
 
 # ----------
 # plotly.py helper functions
+
 def pil_to_b64(im, enc="png"):
     io_buf = BytesIO()
     im.save(io_buf, format=enc)
@@ -123,16 +103,16 @@ def add_bbox(fig, x0, y0, x1, y1,
         showlegend=showlegend,
     ))
 
-
 # colors for visualization
 COLORS = ['#fe938c','#86e7b8','#f9ebe0','#208aae','#fe4a49', 
           '#291711', '#5f4b66', '#b98b82', '#87f5fb', '#63326e'] * 50
-
 
 # Start Dash
 app = dash.Dash(__name__)
 server = app.server  # Expose the server variable for deployments
 
+# ----------
+# layout
 app.layout = html.Div(className='container', children=[
     Row(html.H1("Video Object Removal App")),
 
@@ -187,9 +167,17 @@ app.layout = html.Div(className='container', children=[
 
     html.Hr(),
 
-    html.Video(id='sequence-output',src='/static/test.mp4',controls=True,style={"height": "70vh"})
+    Row([
+        Column(width=2, children=[html.P("Current progress")]),
+        Column(width=12, children=[html.Progress(id='progress-sequence',max=100,value=23)])
+    ]),
+
+    html.Video(id='sequence-output',src='/static/result.mp4',controls=True,style={"height": "70vh"})
 ])
 
+
+# ----------
+# callbacks 
 
 # update_framenum_minmax()
 # purpose:  to update min/max boxes of the slider 
@@ -312,11 +300,66 @@ def run_single(n_clicks, dirpath, iou, framerange, confidence, checklist):
     return fig, not apply_nms
 
 
+@app.callback(
+    [Output('progress-sequence', 'value')],
+    [Input('button-sequence', 'n_clicks')],
+    [State('input-dirpath', 'value'),
+     State('slider-framenums','value'),
+     State('slider-confidence', 'value')]
+)
+def run_sequence(n_clicks, dirpath, framerange, confidence):
+
+    if dirpath is not None and os.path.isdir(dirpath):
+        fnames = getImageFileNames(dirpath)
+    else: 
+        return [0] 
+    
+    fmin, fmax = framerange
+    fnames = fnames[fmin:fmax]
+
+    # was this a repeat?
+    if len(detr.imglist) != 0:
+        if fnames == detr.selectFiles:
+            return [0]
+        else:
+            detr.__init__()
+
+    detr.selectFiles = fnames
+
+    staticdir = os.path.join(os.getcwd(),"static")
+    detr.load_images(filelist=fnames)
+    detr.predict_sequence()
+    detr.groupObjBBMaskSequence()
+    detr.create_animationObject(framerange=framerange,
+                                useMasks=True,
+                                toHTML=False,
+                                figsize=(20,15),
+                                interval=30,
+                                MPEGfile=os.path.join(staticdir,'result.mp4'))
+    return [0] 
+
+
+
 # simply forces refresh of video object
-@server.after_request
+#@server.after_request
 @server.route('/static/<path:path>')
 def serve_video(inpath):
     return inpath
+
+#@server.route('/static/<vid_name>')
+#def serve_video(vid_name):
+#    root_dir = os.path.join(os.getcwd(),'static')
+#    vid_path = os.path.join(root_dir,vid_name)
+#    resp = make_response(send_file(vid_path,'video/mp4'))
+#    resp.headers['Content-Disposition'] = 'inline'
+#    return resp 
+
+#@server.after_request
+#def add_header(response):
+#    #response.cache_control.max_age = 1
+#    if 'Cache-Control' not in response.headers:
+#        response.headers['Cache-Control'] = 'no-store'
+#    return response
 
 #@app.callback(
 #    [Output()]
@@ -332,3 +375,4 @@ def serve_video(inpath):
 # ---------------------------------------------------------------------
 if __name__ == '__main__':
     app.run_server(debug=True,host='0.0.0.0')
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
