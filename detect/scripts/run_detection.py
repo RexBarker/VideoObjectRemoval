@@ -2,6 +2,7 @@
 import cv2
 from time import time, sleep
 from glob import glob
+import numpy as np
 import ObjectDetection.imutils as imu
 from ObjectDetection.detect import DetectSingle, TrackSequence, GroupSequence
 from ObjectDetection.inpaintRemote import InpaintRemote
@@ -21,8 +22,9 @@ class ThreadWithReturnValue(Thread):
 
 test_imutils = False
 test_single = False
+test_dilateErode = True
 test_sequence = False
-test_grouping = True
+test_grouping = False
 test_maskoutput = False
 test_remoteInpaint = False
 
@@ -45,6 +47,32 @@ if test_single:
     cv2.imshow('results',imout)
     cv2.waitKey(0)
     cv2.destroyAllWindows(); 
+
+if test_dilateErode:
+    detect = DetectSingle(selectObjectNames=['person','car'])
+    imgfile = "../data/input.jpg"
+    detect.predict(imgfile)
+    masks = detect.masks
+    mask = imu.combineMasks(masks)
+
+    orig = "original"
+    modf = "DilationErosion"
+    cv2.namedWindow(orig)
+    cv2.namedWindow(modf)
+    
+    # single dilation operation
+    modmask = imu.dilateErodeMask(mask)  
+    cv2.imshow(orig,imu.maskToImg(mask))
+    cv2.imshow(modf,imu.maskToImg(modmask))
+    cv2.waitKey(0)
+
+    modmask = imu.dilateErodeMask(mask,actionList=['dilate','erode','dilate'])  
+    cv2.imshow(orig,imu.maskToImg(mask))
+    cv2.imshow(modf,imu.maskToImg(modmask))
+    cv2.waitKey(0)
+
+    cv2.destroyAllWindows()
+
 
 if test_sequence:
     fnames = sorted(glob("../data/Colomar/frames/*.png"))[200:400]

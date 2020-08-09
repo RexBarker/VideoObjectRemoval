@@ -5,7 +5,8 @@ from io import BytesIO
 import time
 
 #import flask
-from flask import send_file, make_response 
+#from flask import send_file, make_response 
+from flask_caching import Cache 
 import dash
 from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
@@ -15,7 +16,10 @@ from PIL import Image
 
 from model import detect_scores_bboxes_classes, filter_boxes, detr
 from model import CLASSES, DEVICE 
+
+basedir = '/home/appuser/app'
 print(f"ObjectDetect loaded, using DEVICE={DEVICE}")
+print(f"Basedirectory: {basedir}")
 
 # ----------
 # Helper functions 
@@ -110,6 +114,12 @@ COLORS = ['#fe938c','#86e7b8','#f9ebe0','#208aae','#fe4a49',
 # Start Dash
 app = dash.Dash(__name__)
 server = app.server  # Expose the server variable for deployments
+cache = Cache()
+CACHE_CONFIG = {
+    'CACHE_TYPE': 'filesystem',
+    'CACHE_DIR': os.path.join(basedir,'_cache')
+} 
+cache.init_app(server,config=CACHE_CONFIG)
 
 # ----------
 # layout
@@ -172,7 +182,11 @@ app.layout = html.Div(className='container', children=[
         Column(width=12, children=[html.Progress(id='progress-sequence',max=100,value=23)])
     ]),
 
-    html.Video(id='sequence-output',src='/static/result.mp4',controls=True,style={"height": "70vh"})
+    html.Video(id='sequence-output',src='/static/result.mp4',controls=True,style={"height": "70vh"}),
+
+    # hidden signal value
+    html.Div(id='signal', style={'display': 'none'})
+
 ])
 
 
@@ -324,6 +338,10 @@ def run_sequence(n_clicks, dirpath, framerange, confidence):
         else:
             detr.__init__()
 
+    compute_sequence(fnames,fmin,fmax,confidence)    
+    return
+
+def compute_sequence()
     detr.selectFiles = fnames
 
     staticdir = os.path.join(os.getcwd(),"static")
@@ -375,4 +393,4 @@ def serve_video(inpath):
 # ---------------------------------------------------------------------
 if __name__ == '__main__':
     app.run_server(debug=True,host='0.0.0.0')
-    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+    #app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0

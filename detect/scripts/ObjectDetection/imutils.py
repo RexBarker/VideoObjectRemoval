@@ -43,8 +43,23 @@ def bboxIoU(boxA, boxB):
     # return the intersection over union value
     return iou
 
+def bboxToMask(bbox,maskShape):
+    """
+        Creates a mask(np.bool) based on bbox area for equivalent mask shape
+    """
+    assert isinstance(bbox,list), "bbox must be list"
+    assert isinstance(maskShape,(tuple, list)), "maskShape must be list or tuple"
+    x0,y0,x1,y1 = [round(x) for x in bbox]
+
+    bbmask = np.full(maskShape,fill_value=False, dtype=np.bool)
+    bbmask[y0:y1,x0:x1] = True
+    return bbmask
+
 
 def combineMasks(maskList):
+    """
+        Combines the list of masks into a single mask
+    """
     # single mask passed
     if not isinstance(maskList,list):
         return maskList   
@@ -68,6 +83,65 @@ def maskImage(im, mask, mask_color=(0,0,255), inplace=False):
         outim[:,:,i] = (mask > 0) * mask_color[i] + (mask == 0) * outim[:, :, i]
 
     return outim
+
+def maskToImg(mask, toThreeChannel=False):
+    """
+        converts a mask(dtype=np.bool) to cv2 compatable image (dytpe=np.uint8)
+        copies to a 3 channel array if requested
+    """
+    maskout = np.zeros_like(mask,dtype=np.uint8)
+    if mask.dtype == np.bool:
+        maskout = np.uint8(255*mask)
+    else:
+        maskout = np.uint8((mask > 0) * 255) 
+    
+    if toThreeChannel and len(maskout.shape) == 2:
+        mmaskout = np.zeros([*maskout.shape,3],dtype=np.uint8)
+        mmaskout[:,:,0] = maskout
+        mmaskout[:,:,1] = maskout
+        mmaskout[:,:,2] = maskout
+        return mmaskout 
+    else: 
+        return maskout
+
+
+def dilateErodeMask(mask, actionList=['dilate'], kernelShape='rect', maskHalfWidth=4):
+    """
+        Dilates or Erodes image mask ('mask') by 'kernelShape', based on mask width
+        'maskWidth'= 2 * maskHalfWidth + 1
+        'actionList' is a list of actions ('dilate' or 'erode') to perform on the mask
+    """
+    for act in actionList:
+        assert act in ('dilate', 'erode'), "Invalid action specified in actionList"
+
+    if kernelShape.lower().startswith('re'): 
+        krnShape = cv2.MORPH_RECT       # rectangular mask
+    elif kernelShape.lower().startswith('cr'): 
+        krnShape = cv2.MORPH_CROSS      # cross shape
+    elif kernelShape.lower().startswith('el'):
+        krnShape = cv2.MORPH_ELLIPSE    # elliptical shape (or circlular)
+    else:
+        raise Exception(f"Unknown kernel mask shape specified: {kernelShape}")
+
+    assert maskHalfWidth > 0, "Error: maskHalfWidth must be > 0" 
+
+    maskWasDtype = mask.dtype
+    maskWidth = 2 * maskHalfWidth + 1
+    krnElement = cv2.getStructuringElement(krnShape, 
+                                           (maskWidth,maskWidth),  
+                                           (maskHalfWidth, maskHalfWidth))
+
+    maskout = np.uint8(mask.copy())
+    for act in actionList:
+        if act == 'dilate': 
+            maskout = cv2.dilate(maskout,krnElement)
+        elif act == 'erode': 
+            maskout = cv2.erode(maskout,krnElement)
+        else:
+            pass  # hmm, shouldn't get here
+
+    maskout.dtype = maskWasDtype
+    return maskout
 
 
 def writeImagesToDirectory(imageList,dirPath,minPadLength=None,imgtype='png',cleanDirectory=False):
