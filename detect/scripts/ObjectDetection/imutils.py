@@ -201,6 +201,40 @@ def writeMasksToDirectory(maskList,dirPath,minPadLength=None,imgtype='png',clean
     
     return n_frames
 
+def writeFramesToVideo(imageList,filePath,fps=30):
+    """
+        Writes given set of frames to video file (platform specific coding)
+        format is 'mp4' or 'avi'
+    """
+    assert len(imageList) > 1, "Cannot make video with single frame"
+    height,width =imageList[0].shape[:2]
+
+    dirPath = os.path.dirname(filePath)
+    if not os.path.isdir(dirPath):
+        path = ''
+        for d in dirPath.split('/'):
+            if not d: continue
+            path += d + '/'
+            if not os.path.isdir(path):
+                os.mkdir(path)
+
+    if filepath.endswith(".mp4"):
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    elif filepath.endswith(".avi"):
+        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    else:
+        assert False, f"Could not determine the video output type from {filepath}"
+        
+    outvid = cv2.VideoWriter(filePath, fourcc, fps, (width,height) )
+
+    # write out frames to video
+    for im in imageList:
+        outvid.write(im)
+
+    outvid.release()
+
+    return len(imageList)
+
 
 def maskedItemRelativeHistogram(img, msk,n_bins=10):
     im = img.copy()
