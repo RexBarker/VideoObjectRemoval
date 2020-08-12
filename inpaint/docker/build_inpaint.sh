@@ -1,1 +1,1 @@
-docker build --tag inpaint .
+docker build --tag inpainting .
