@@ -27,6 +27,7 @@ import matplotlib.animation as animation
 # module specific library
 import ObjectDetection.imutils as imu
 
+# ---------------------------------------------------------------------
 class DetectSingle:
     def __init__(self, 
                  score_threshold = 0.5,
@@ -151,6 +152,7 @@ class DetectSingle:
 
         return vout.get_image()[:, :, ::-1]  # reverses channels again
 
+# ---------------------------------------------------------------------
 # Class: TrackSequence
 # - creates the basic sequence collection for set of input frames
 # - defined by either the filelist or a fileglob (list is better, you do the picking)
@@ -218,6 +220,7 @@ class TrackSequence(DetectSingle):
         return res  
     
 
+# ---------------------------------------------------------------------
 # Class GroupSequence
 # - creates the grouping of a sequence by object based on class
 # - Object (in this sense): A single person, car, truck, teddy bear, etc.
@@ -235,6 +238,7 @@ class GroupSequence(TrackSequence):
         self.objBBMaskSeqDict = None
         self.objBBMaskSeqGrpDict = None
         self.combinedMaskList = None
+        self.orginalSequenceMap = None
         self.MPEGconfig = {
             'fps': 50,
             'metadata': {'artist': "appuser"},
@@ -349,6 +353,7 @@ class GroupSequence(TrackSequence):
     
             self.objBBMaskSeqGrpDict[objName] = attGrpBBMsk
     
+
     def filter_ObjBBMaskSeq(self,objNameList=None,minCount=10,inPlace=True):
         """
             Performs filtering for minimum group size
@@ -362,14 +367,22 @@ class GroupSequence(TrackSequence):
         assert all([objN in list(self.objBBMaskSeqGrpDict.keys()) for objN in objNameList]), \
             "Invalid list of object names given"
         
+        self.orginalSequenceMap = \
+            {objn:{ i:None for i in range(len(self.objBBMaskSeqGrpDict[objn]))} \
+                for objn in self.objBBMaskSeqGrpDict.keys() }
+
         filteredSeq = dict()
         for grpName in objNameList:
-            for grp in self.objBBMaskSeqGrpDict[grpName]:
+            inew = 0
+            for iold, grp in enumerate(self.objBBMaskSeqGrpDict[grpName]):
                 if len(grp) >= minCount:
                     if not filteredSeq.get(grpName):
                         filteredSeq[grpName] = [grp]
                     else:
                         filteredSeq[grpName].append(grp)
+
+                    self.orginalSequenceMap[grpName][iold] = inew
+                    inew += 1
         
         if inPlace:
             self.objBBMaskSeqGrpDict = filteredSeq
@@ -377,7 +390,120 @@ class GroupSequence(TrackSequence):
         else:
             return filteredSeq
 
+
+    def fill_ObjBBMaskSequence(self, specificObjectNameInstances=None):
+        """
+            Purpose: fill in missing masks of a specific object sequence
+            masks are stretched to interpolated bbox region
+            'specificObjectNameInstances' = { {'objectName', [0, 2 , ..]}
+            Examples:
+                'specificObjectNameInstances' = { 'person', [0, 2 ]}  # return person objects, instance 0 and 2
+                'specificObjectNameInstances' = { 'person', None }  # return 'person' objects, perform for all instances
+                'specificObjectNameInstances' = None  # perform for all object names, for all instances 
+            Note: the indices of the 'specificObjectNameInstances' refer to the orginal order before filtering
+        """
+        def maximizeBBoxCoordinates(bbxlist):
+            # provides maximum scope of set of bbox inputs
+            if isinstance(bbxlist[0],(float,int)):  
+                return bbxlist  # single bounding box passed, first index is x0
+    
+            # multiple bbx
+            minx,miny,maxx,maxy = bbxlist[0]
             
+            if len(bbxlist) > 1:
+                for x0,y0,x1,y1 in bbxlist[1:]:
+                    minx = min(minx,x0)
+                    maxx = max(maxx,x1)
+                    miny = min(miny,y0)
+                    maxy = max(maxy,y1)
+            
+            return [minx,miny,maxx,maxy] 
+
+        allObjNameIndices = { objn: [range(len(obji))] for objn,obji in self.objBBMaskSeqGrpDict.items() }
+        allObjNames = list(self.objBBMaskSeqGrpDict.keys())
+
+        if specificObjectNameInstances is None:   # all objects, all instances
+            objNameIndices = allObjNameIndices
+            objIndexMap = { objn: {i:i for i in range(len(objl))} \
+                            for objn,objl in self.objBBMaskSeqGrpDict.items() }
+        else:
+            assert isinstance(specificObjectNameInstances,dict), \
+                "Expected a dictionary object for 'specificeeObjectNameInstances'"
+
+            assert all([o in allObjNames for o in specificObjectNameInstances.keys()]), \
+                "Object name specified which are not in predicted list"
+            
+            if self.orginalSequenceMap is None:
+                assert all([max(obji) < len(self.objBBMaskSeqGrpDict[objn]) for objn,obji in specificObjectNameInstances.items() ]), \
+                    "Specified objectName index exceeded number of known instances of objectName from detection"
+
+                objIndexMap = { objn: {i:i for i in range(len(objl))} \
+                                for objn,objl in self.objBBMaskSeqGrpDict.items() }
+            else:
+                for objn,objl in specificObjectNameInstances.items():
+                    # check that the original object index was mapped after filtering
+                    assert all([self.orginalSequenceMap[objn][i] is not None for i in objl]), \
+                        f"Specified object '{objn}' index list was invalid due to missing index:[{objl}]"
+
+                objIndexMap = {objn: {i:self.orginalSequenceMap[objn][i] \
+                               for i in objl} for objn,objl in specificObjectNameInstances.items()}
+        
+
+        for objn, objindices in specificObjectNameInstances.items():
+            for objiold in objindices:
+                objinew = objIndexMap[objn][objiold]
+                rseq = self.objBBMaskSeqGrpDict[objn][objinew]
+
+                mskseq = [[] for _ in range(len(self.imglist))]
+                bbxseq = [[] for _ in range(len(self.imglist))]
+
+                for bbxs, msks, ind in rseq:
+                    bbx = maximizeBBoxCoordinates(bbxs)
+                    msk = imu.combineMasks(msks)
+                    bbxseq[ind]=bbx
+                    mskseq[ind]=msk
+                
+                # build dataframe of known bbox coordinates 
+                targetBBDF = pd.DataFrame(bbxseq,columns=['x0','y0','x1','y1'])
+
+                # determine missing indices
+                missedIndices = [index for index, row in targetBBDF.iterrows() if row.isnull().any()]
+
+                # extrapolate missing bbox coordinates
+                targetBBDF = targetBBDF.interpolate(limit_direction='both', kind='linear')
+
+                # output bboxes, resequenced
+                bbxseq = [[r.x0,r.y0,r.x1,r.y1] for _,r,*_ in targetBBDF.iterrows()] 
+
+                # create missing masks by stretching or shrinking known masks from i-1 
+                # (relies on prior prediction of missing mask, for sequential missing masks)
+                for i in missedIndices:
+                    lasti = i-1   # can't have i=0 missing, otherwise there's a corrupt system
+                    lastmsk = mskseq[lasti]
+                    
+                    # masks which were not good are found here
+                    x0o,y0o,x1o,y1o = [round(v) for v in targetBBDF.iloc[lasti]]
+                    x0r,y0r,x1r,y1r = [round(v) for v in targetBBDF.iloc[i]]
+                    
+                    wr = x1r - x0r
+                    hr = y1r - y0r
+                    
+                    msko = mskseq[lasti]*1.0
+                    mskr = np.zeros_like(msko)
+                    
+                    submsko = msko[y0o:y1o,x0o:x1o]
+                    submskr = cv2.resize(submsko,(wr,hr))
+                    
+                    mskr[y0r:y1r,x0r:x1r] = submskr
+                    mskseq[i] = mskr > 0.0   # returns np.array(dtype=np.bool)
+         
+                # recollate into original class object, with the new definitions
+                outrseq = [ [bbxmsk[0],bbxmsk[1], ind] for ind,bbxmsk in enumerate(zip(bbxseq, mskseq))]
+                self.objBBMaskSeqGrpDict[objn][objinew] = outrseq
+
+        return True        
+
+
     def get_groupedResults(self, getObjNamesOnly=False, getSpecificObjNames=None):
         """
             Results for sequence prediction, returned as dictionary for objName
@@ -398,10 +524,36 @@ class GroupSequence(TrackSequence):
         return res
 
 
+    def dilateErode_MaskSequence(self,masklist=None,
+                                      actionList=['dilate'], 
+                                      kernelShape='rect',
+                                      maskHalfWidth=4,
+                                      inPlace=True):
+        """
+            Purpose: to dilate or erode mask, where the mask list is
+            either the exisitng mask list or one passed. The mask list must
+            be a flat list of single masks for one frame index (all masks must have been combined)
+        """
+        if masklist is None:
+            if self.combinedMaskList is None:
+                raise Exception("No masks were given for dilateErode operation")
+            else:
+                masklist = self.combinedMaskList
+        
+        maskListOut = []
+        for msk in masklist:
+            maskListOut.append(imu.dilateErodeMask(msk, actionList=actionList,
+                                                        kernelShape=kernelShape,
+                                                        maskHalfWidth=maskHalfWidth)) 
+        if inPlace:
+            self.combinedMaskList = maskListOut 
+            return True
+        else:
+            return maskListOut 
+
+
     def combine_MaskSequence(self,objNameList=None, 
-                             writeImagesToDirectory=None, 
-                             writeMasksToDirectory=None, 
-                             cleanDirectory=False, inPlace=True):
+                              inPlace=True):
         """
             Purpose is to combine all masks at a given time index
             to a single mask. Result is stored 
@@ -416,12 +568,6 @@ class GroupSequence(TrackSequence):
 
         n_frames = len(self.imglist)
 
-        # write images (which are paired with masks)
-        if writeImagesToDirectory is not None:
-            imu.writeImagesToDirectory(self.imglist,writeImagesToDirectory,
-                                       minPadLength=5,
-                                       cleanDirectory=cleanDirectory)
-
         # combine and write masks
         seqMasks = [ [] for _ in range(n_frames)]
         for objName in objNameList:
@@ -430,17 +576,40 @@ class GroupSequence(TrackSequence):
                     seqMasks[ind].append(msk)
 
         combinedMasks = [imu.combineMasks(msks) for msks in seqMasks]
-
-        if writeMasksToDirectory is not None:
-            imu.writeMasksToDirectory(combinedMasks,writeMasksToDirectory,
-                                       minPadLength=5,
-                                       cleanDirectory=cleanDirectory)
-        
         if inPlace:
             self.combinedMaskList = combinedMasks
             return True
         else:
             return combinedMasks
+
+
+    def write_ImageMaskSequence(self,imagelist=None,
+                                masklist=None,
+                                writeMasksToDirectory=None, 
+                                writeImagesToDirectory=None,
+                                cleanDirectory=False):
+
+        if imagelist is None:
+            if self.imglist is not None:
+                imagelist = self.imglist  
+
+        if masklist is None:
+            if self.combinedMaskList is not None:
+                masklist = self.combinedMaskList
+
+        # write images (which are paired with masks)
+        if (writeImagesToDirectory is not None) and (imagelist is not None):
+            imu.writeImagesToDirectory(imagelist,writeImagesToDirectory,
+                                       minPadLength=5,
+                                       cleanDirectory=cleanDirectory)
+
+        # write masks (which are paired with masks)
+        if (writeMasksToDirectory is not None) and (masklist is not None) :
+            imu.writeMasksToDirectory(masklist,writeMasksToDirectory,
+                                       minPadLength=5,
+                                       cleanDirectory=cleanDirectory)
+        
+        return True
 
 
     def create_animationObject(self,
@@ -454,7 +623,7 @@ class GroupSequence(TrackSequence):
                             interval=30,
                             repeat_delay=1000):
         """
-            Purpose produce an animation object of the masked frames 
+            Purpose: produce an animation object of the masked frames 
             returns an animation object to be rendered with HTML()
         """
         if getSpecificObjNames is not None:
@@ -475,18 +644,25 @@ class GroupSequence(TrackSequence):
 
         # combine and write masks
         if useMasks:
-            seqMasks = [ [] for _ in range(framemin,framemax+1)]
-            for objName in getNames:
-                for objgrp in self.objBBMaskSeqGrpDict[objName]:
-                    for bbx,msk,ind in objgrp:
-                        seqMasks[ind].append(msk)
+            if self.combinedMaskList is None:
+                seqMasks = [ [] for _ in range(framemin,framemax+1)]
+                for objName in getNames:
+                    for objgrp in self.objBBMaskSeqGrpDict[objName]:
+                        for bbx,msk,ind in objgrp:
+                            seqMasks[ind].append(msk)
+            else:
+                seqMasks = self.combinedMaskList
 
         outims = []
         for i,im in enumerate(self.imglist):
             if useMasks:
                 msks = seqMasks[i] 
-                for gi,msk in enumerate(msks):
-                    im = imu.maskImage(im,msk,self.thing_colors[gi])
+                if isinstance(msks,list):
+                    for gi,msk in enumerate(msks):
+                        im = imu.maskImage(im,msk,self.thing_colors[gi])
+                else:
+                    im = imu.maskImage(im,msks,self.thing_colors[0])
+
                 
             im = im[:,:,::-1]  # convert from BGR to RGB
             renderplt = plt.imshow(im,animated=True)

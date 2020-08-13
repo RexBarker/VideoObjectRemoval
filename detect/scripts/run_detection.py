@@ -22,11 +22,12 @@ class ThreadWithReturnValue(Thread):
 
 test_imutils = False
 test_single = False
-test_dilateErode = True
+test_dilateErode = False
 test_sequence = False
-test_grouping = False
-test_maskoutput = False
-test_remoteInpaint = False
+test_grouping = True 
+test_maskFill = True
+test_maskoutput = True 
+test_remoteInpaint = True
 
 if test_imutils:
     bbtest = [0.111, 0.123, 0.211, 0.312]
@@ -86,20 +87,25 @@ if test_grouping:
     groupseq.load_images(filelist=fnames)
     groupseq.groupObjBBMaskSequence()
     res = groupseq.get_groupedResults(getSpecificObjNames='person')
-    groupseq.create_animationObject(MPEGfile="../data/Colomar/result.mp4")
+
+if test_grouping and test_maskFill:
+    groupseq.filter_ObjBBMaskSeq(objNameList='person',minCount=70)
+    groupseq.fill_ObjBBMaskSequence(specificObjectNameInstances={'person':[0,1,2]})
 
 if test_grouping and test_maskoutput:
-    groupseq.filter_ObjBBMaskSeq(objNameList='person',)
-    groupseq.combine_MaskSequence(cleanDirectory=True,
-        writeImagesToDirectory="../data/Colomar/toInpaint/frames",
-        writeMasksToDirectory="../data/Colomar/toInpaint/masks")
+    groupseq.combine_MaskSequence()
+    groupseq.dilateErode_MaskSequence(kernelShape='elipse',maskHalfWidth=10)
+    groupseq.write_ImageMaskSequence(cleanDirectory=True,
+        writeImagesToDirectory="../data/Colomar/threeInpaint/frames",
+        writeMasksToDirectory="../data/Colomar/threeInpaint/masks")
+    #groupseq.create_animationObject(MPEGfile="../data/Colomar/result.mp4")
 
 if test_remoteInpaint:
     rinpaint = InpaintRemote() 
     rinpaint.connectInpaint()
 
-    frameDirPath="/home/appuser/data/Colomar/toInpaint/frames"
-    maskDirPath="/home/appuser/data/Colomar/toInpaint/masks"
+    frameDirPath="/home/appuser/data/Colomar/threeInpaint/frames"
+    maskDirPath="/home/appuser/data/Colomar/threeInpaint/masks"
 
     trd1 = ThreadWithReturnValue(target=rinpaint.runInpaint,
                                  kwargs={'frameDirPath':frameDirPath,'maskDirPath':maskDirPath})
