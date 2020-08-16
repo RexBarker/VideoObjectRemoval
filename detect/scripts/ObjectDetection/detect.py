@@ -84,7 +84,16 @@ class DetectSingle:
                 assert n in self.thing_classes, f"Error finding object class name: {n}"
                 self.selObjIndices.append(self.selObjNames.index(n))                
 
-    def predict(self,img,selObjectNames=None):
+
+    def __convertToBBmasks(self):
+        """
+            converts masks into mask of BBox Shape, replacing the orignal mask
+        """
+        h,w,_ = self.im.shape
+        self.masks = [imu.bboxToMask(bbx,(h,w)) for bbx in self.bboxes]
+
+
+    def predict(self,img,selObjectNames=None,useBBmasks=False):
         if isinstance(img,str):
             # was an image file path 
             assert os.path.exists(img), f"Specified image file {img} does not exist"
@@ -107,7 +116,11 @@ class DetectSingle:
         self.bboxes = [ imu.bboxToList(outputs['instances'].pred_boxes[i]) for i,o in enumerate(objects) if o ]
         self.scores = [ scores[i] for i,o in enumerate(objects) if o ]
 
+        if useBBmasks:
+            self.__convertToBBmasks()
+
         self.selClassList = [ classes[i] for i,o in enumerate(objects) if o ]
+
     
     def get_results(self,getImage=True, getMasks=True, getBBoxes=True, getClasses=True):
         res = dict()
@@ -169,6 +182,7 @@ class TrackSequence(DetectSingle):
         self.bboxlist = []
         self.objclasslist = []
 
+
     def load_images(self,fileglob=None, filelist=None):
         if fileglob is not None:
             files = sorted(glob(fileglob))
@@ -190,8 +204,10 @@ class TrackSequence(DetectSingle):
         
         return len(self.imglist)
     
+
     def get_images(self):
         return self.imglist 
+
 
     def predict_sequence(self,fileglob=None, filelist=None, **kwargs):
         if len(self.imglist) == 0:
@@ -199,12 +215,13 @@ class TrackSequence(DetectSingle):
             self.load_images(fileglob=fileglob, filelist=filelist, **kwargs)
 
         for im in self.imglist:
-            self.predict(im)  
+            self.predict(im, **kwargs)  
             self.masklist.append(self.masks)
             self.bboxlist.append(self.bboxes)
             self.objclasslist.append(self.selClassList)
         
         return len(self.masklist) 
+
 
     def get_sequenceResults(self,getImage=True, getMasks=True, getBBoxes=True, getClasses=True):
         """
@@ -354,15 +371,17 @@ class GroupSequence(TrackSequence):
             self.objBBMaskSeqGrpDict[objName] = attGrpBBMsk
     
 
-    def filter_ObjBBMaskSeq(self,objNameList=None,minCount=10,inPlace=True):
+    def filter_ObjBBMaskSeq(self,allowObjNameInstances=None,minCount=10,inPlace=True):
         """
             Performs filtering for minimum group size
             Eventually also for minimum relative object size
         """
-        if objNameList is None:
-            objNameList = list(self.objBBMaskSeqGrpDict.keys())
-        elif not isinstance(objNameList,list):
-            objNameList = [objNameList]
+        if allowObjNameInstances is None:
+            allowObjNameInstances = { objn:list(range(len(objl))) for objn,objl in self.objBBMaskSeqGrpDict.items()}
+        elif not isinstance(allowObjNameInstances,dict):
+            raise Exception("Expected dictionary object for 'objNameListInstDict',but got something else") 
+
+        objNameList = list(allowObjNameInstances.keys())
         
         assert all([objN in list(self.objBBMaskSeqGrpDict.keys()) for objN in objNameList]), \
             "Invalid list of object names given"
@@ -372,10 +391,10 @@ class GroupSequence(TrackSequence):
                 for objn in self.objBBMaskSeqGrpDict.keys() }
 
         filteredSeq = dict()
-        for grpName in objNameList:
+        for grpName,grpInst in allowObjNameInstances.items():
             inew = 0
             for iold, grp in enumerate(self.objBBMaskSeqGrpDict[grpName]):
-                if len(grp) >= minCount:
+                if  ( iold in grpInst ) and  ( len(grp) >= minCount ):
                     if not filteredSeq.get(grpName):
                         filteredSeq[grpName] = [grp]
                     else:
@@ -419,11 +438,12 @@ class GroupSequence(TrackSequence):
             
             return [minx,miny,maxx,maxy] 
 
-        allObjNameIndices = { objn: [range(len(obji))] for objn,obji in self.objBBMaskSeqGrpDict.items() }
+        allObjNameIndices = { objn: list(range(len(obji))) for objn,obji in self.objBBMaskSeqGrpDict.items() }
         allObjNames = list(self.objBBMaskSeqGrpDict.keys())
 
         if specificObjectNameInstances is None:   # all objects, all instances
             objNameIndices = allObjNameIndices
+            specificObjectNameInstances = allObjNameIndices
             objIndexMap = { objn: {i:i for i in range(len(objl))} \
                             for objn,objl in self.objBBMaskSeqGrpDict.items() }
         else:

@@ -8,6 +8,7 @@ import time
 #from flask import send_file, make_response 
 from flask_caching import Cache 
 import dash
+import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
 import dash_html_components as html
@@ -341,7 +342,7 @@ def run_sequence(n_clicks, dirpath, framerange, confidence):
     compute_sequence(fnames,fmin,fmax,confidence)    
     return
 
-def compute_sequence()
+def compute_sequence():
     detr.selectFiles = fnames
 
     staticdir = os.path.join(os.getcwd(),"static")

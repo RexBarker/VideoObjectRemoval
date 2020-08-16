@@ -3,6 +3,7 @@
 
 # general files
 app/static/**
+app/_cache/**
 data/**
 *.ipynb
 *.pyc

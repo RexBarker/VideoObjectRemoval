@@ -25,9 +25,10 @@ test_single = False
 test_dilateErode = False
 test_sequence = False
 test_grouping = True 
+test_bbmasks = True
 test_maskFill = True
 test_maskoutput = True 
-test_remoteInpaint = True
+test_remoteInpaint = True 
 
 if test_imutils:
     bbtest = [0.111, 0.123, 0.211, 0.312]
@@ -85,27 +86,28 @@ if test_grouping:
     fnames = sorted(glob("../data/Colomar/frames/*.png"))[200:400]
     groupseq = GroupSequence(selectObjectNames=['person','car'])
     groupseq.load_images(filelist=fnames)
-    groupseq.groupObjBBMaskSequence()
+    groupseq.groupObjBBMaskSequence(useBBmasks=test_bbmasks)
     res = groupseq.get_groupedResults(getSpecificObjNames='person')
 
 if test_grouping and test_maskFill:
-    groupseq.filter_ObjBBMaskSeq(objNameList='person',minCount=70)
-    groupseq.fill_ObjBBMaskSequence(specificObjectNameInstances={'person':[0,1,2]})
+    groupseq.filter_ObjBBMaskSeq(allowObjNameInstances={'person':[2]},minCount=70)
+    #groupseq.fill_ObjBBMaskSequence(specificObjectNameInstances={'person':[0,1,2]})
+    groupseq.fill_ObjBBMaskSequence()
 
 if test_grouping and test_maskoutput:
     groupseq.combine_MaskSequence()
     groupseq.dilateErode_MaskSequence(kernelShape='elipse',maskHalfWidth=10)
     groupseq.write_ImageMaskSequence(cleanDirectory=True,
-        writeImagesToDirectory="../data/Colomar/threeInpaint/frames",
-        writeMasksToDirectory="../data/Colomar/threeInpaint/masks")
-    #groupseq.create_animationObject(MPEGfile="../data/Colomar/result.mp4")
+        writeImagesToDirectory="../data/Colomar/fourInpaint/frames",
+        writeMasksToDirectory="../data/Colomar/fourInpaint/masks")
+    groupseq.create_animationObject(MPEGfile="../data/Colomar/result.mp4")
 
 if test_remoteInpaint:
     rinpaint = InpaintRemote() 
     rinpaint.connectInpaint()
 
-    frameDirPath="/home/appuser/data/Colomar/threeInpaint/frames"
-    maskDirPath="/home/appuser/data/Colomar/threeInpaint/masks"
+    frameDirPath="/home/appuser/data/Colomar/fourInpaint/frames"
+    maskDirPath="/home/appuser/data/Colomar/fourInpaint/masks"
 
     trd1 = ThreadWithReturnValue(target=rinpaint.runInpaint,
                                  kwargs={'frameDirPath':frameDirPath,'maskDirPath':maskDirPath})
