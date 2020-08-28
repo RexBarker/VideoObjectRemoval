@@ -8,6 +8,13 @@ import cv2
 import numpy as np
 from math import log10, ceil
 
+fontconfig = {
+    "fontFace"     : cv2.FONT_HERSHEY_SIMPLEX,
+    "fontScale"    : 5, 
+    "color"        : (0,0,255),
+    "lineType"     : 3
+}
+
 def bboxToList(bboxTensor):
     return  [float(x) for x in bboxTensor.to('cpu').tensor.numpy().ravel()]
 
@@ -201,6 +208,7 @@ def writeMasksToDirectory(maskList,dirPath,minPadLength=None,imgtype='png',clean
     
     return n_frames
 
+
 def writeFramesToVideo(imageList,filePath,fps=30):
     """
         Writes given set of frames to video file (platform specific coding)
@@ -218,12 +226,12 @@ def writeFramesToVideo(imageList,filePath,fps=30):
             if not os.path.isdir(path):
                 os.mkdir(path)
 
-    if filepath.endswith(".mp4"):
+    if filePath.endswith(".mp4"):
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    elif filepath.endswith(".avi"):
+    elif filePath.endswith(".avi"):
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
     else:
-        assert False, f"Could not determine the video output type from {filepath}"
+        assert False, f"Could not determine the video output type from {filePath}"
         
     outvid = cv2.VideoWriter(filePath, fourcc, fps, (width,height) )
 
@@ -235,6 +243,16 @@ def writeFramesToVideo(imageList,filePath,fps=30):
 
     return len(imageList)
 
+
+def createNullVideo(filePath,message="No Image",heightWidth=(100,100)):
+    h,w = heightWidth
+    imgblank = np.zeros((h,w,3),dtype=np.uint8)
+    if message:
+        imgblank = cv2.putText(imgblank,message,(h // 2, w // 2),**fontconfig)
+
+    # create blank video with 2 frames
+    return writeFramesToVideo([imgblank,imgblank],filePath=filePath,fps=1)
+    
 
 def maskedItemRelativeHistogram(img, msk,n_bins=10):
     im = img.copy()

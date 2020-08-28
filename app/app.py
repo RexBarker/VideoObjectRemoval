@@ -1,13 +1,15 @@
 import os
-from glob import glob
 import base64
+from glob import glob
 from io import BytesIO
 import time
+from datetime import datetime
 
 #import flask
 #from flask import send_file, make_response 
 from flask_caching import Cache 
 import dash
+import dash_player
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 import dash_core_components as dcc
@@ -15,7 +17,8 @@ import dash_html_components as html
 import plotly.graph_objects as go
 from PIL import Image
 
-from model import detect_scores_bboxes_classes, filter_boxes, detr
+from model import detect_scores_bboxes_classes, \
+                  filter_boxes, detr, createNullVideo
 from model import CLASSES, DEVICE 
 
 basedir = '/home/appuser/app'
@@ -113,7 +116,7 @@ COLORS = ['#fe938c','#86e7b8','#f9ebe0','#208aae','#fe4a49',
           '#291711', '#5f4b66', '#b98b82', '#87f5fb', '#63326e'] * 50
 
 # Start Dash
-app = dash.Dash(__name__)
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 server = app.server  # Expose the server variable for deployments
 cache = Cache()
 CACHE_CONFIG = {
@@ -180,10 +183,18 @@ app.layout = html.Div(className='container', children=[
 
     Row([
         Column(width=2, children=[html.P("Current progress")]),
-        Column(width=12, children=[html.Progress(id='progress-sequence',max=100,value=23)])
+        #Column(width=12, children=[html.Progress(id='progress-sequence',max=100,value=23)])
+        Column(width=12, children= [dbc.Progress(value=10,id='progress-sequence',striped=True)])
+        #dbc.Progress(value=0,id='progress-sequence',striped=True)
     ]),
 
-    html.Video(id='sequence-output',src='/static/result.mp4',controls=True,style={"height": "70vh"}),
+    #html.Video(id='sequence-output',src='/static/result.mp4',controls=True,style={"height": "70vh"}),
+    #html.Div(id='sequence-parent',children=[html.Video(id='sequence-output',style={"height": "70vh"})]),
+    html.Div([ dash_player.DashPlayer(
+        id='sequence-output',
+        url='static/result.mp4',
+        controls=True,
+        style={"height": "70vh"}) ]),
 
     # hidden signal value
     html.Div(id='signal', style={'display': 'none'})
@@ -316,7 +327,8 @@ def run_single(n_clicks, dirpath, iou, framerange, confidence, checklist):
 
 
 @app.callback(
-    [Output('progress-sequence', 'value')],
+    [Output('progress-sequence', 'value'),
+     Output('signal','children')],
     [Input('button-sequence', 'n_clicks')],
     [State('input-dirpath', 'value'),
      State('slider-framenums','value'),
@@ -327,7 +339,7 @@ def run_sequence(n_clicks, dirpath, framerange, confidence):
     if dirpath is not None and os.path.isdir(dirpath):
         fnames = getImageFileNames(dirpath)
     else: 
-        return [0] 
+        return [0], -1 
     
     fmin, fmax = framerange
     fnames = fnames[fmin:fmax]
@@ -335,35 +347,61 @@ def run_sequence(n_clicks, dirpath, framerange, confidence):
     # was this a repeat?
     if len(detr.imglist) != 0:
         if fnames == detr.selectFiles:
-            return [0]
+            return [0], -1
         else:
             detr.__init__()
 
-    compute_sequence(fnames,fmin,fmax,confidence)    
-    return
+    vfile = compute_sequence(fnames,framerange,confidence)    
+    return [50], vfile 
 
-def compute_sequence():
+
+@cache.memoize()
+def compute_sequence(fnames,framerange,confidence):
     detr.selectFiles = fnames
 
     staticdir = os.path.join(os.getcwd(),"static")
     detr.load_images(filelist=fnames)
     detr.predict_sequence()
     detr.groupObjBBMaskSequence()
-    detr.create_animationObject(framerange=framerange,
-                                useMasks=True,
-                                toHTML=False,
-                                figsize=(20,15),
-                                interval=30,
-                                MPEGfile=os.path.join(staticdir,'result.mp4'))
-    return [0] 
+    vfile = 'sequence_' + datetime.now().strftime("%Y%m%d_%H%M%S") + ".mp4"
+    if not os.environ.get("VSCODE_DEBUG"):
+        detr.create_animationObject(framerange=framerange,
+                                    useMasks=True,
+                                    toHTML=False,
+                                    figsize=(20,15),
+                                    interval=30,
+                                    MPEGfile=os.path.join(staticdir,vfile))
+    return vfile 
 
+
+@app.callback(Output('sequence-output','url'),
+              [Input('signal','children')],
+              [State('sequence-output','url')])
+def serve_video(vfile,currurl):
+    if currurl is None: 
+        return 'static/result.mp4'
+    else:
+        if vfile is not None and isinstance(vfile,str) and os.path.exists(f"./static/{vfile}"):
+            return f"static/{vfile}"
+        else:
+            return currurl 
+
+
+#@app.callback(Output('sequence-parent','children'), [Input('signal','children')])
+#def serve_video(vid_name):
+#    root_dir = os.path.join(os.getcwd(),'static')
+#    vid_path = os.path.join(root_dir,vid_name)
+#    resp = html.Video(src=vid_path, controls=True,style={"height": "70vh"},autoPlay=True)
+#    #resp = make_response(send_file(vid_path,'video/mp4'))
+#    #resp.headers['Content-Disposition'] = 'inline'
+#    return resp 
 
 
 # simply forces refresh of video object
 #@server.after_request
-@server.route('/static/<path:path>')
-def serve_video(inpath):
-    return inpath
+#@server.route('/static/<path:path>')
+#def serve_video(inpath):
+#    return inpath
 
 #@server.route('/static/<vid_name>')
 #def serve_video(vid_name):
@@ -393,5 +431,10 @@ def serve_video(inpath):
 
 # ---------------------------------------------------------------------
 if __name__ == '__main__':
+
+    # remove and create dummy video for place holder
+    tempfile = os.path.join(os.getcwd(),'static/result.mp4')
+    if not os.path.exists(tempfile):
+        createNullVideo(tempfile)
+
     app.run_server(debug=True,host='0.0.0.0')
-    #app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0

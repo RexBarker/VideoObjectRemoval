@@ -37,6 +37,9 @@ def filter_boxes(scores, boxes, confidence=0.7, apply_nms=True, iou=0.5):
 
     return scores, boxes
 
+def createNullVideo(filePath,message="No Images", heightWidth=(100,100)):
+    return imu.createNullVideo(filePath=filePath, message=message, heightWidth=heightWidth)
+
 
 # COCO classes
 #CLASSES = [
