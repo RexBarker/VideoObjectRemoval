@@ -15,6 +15,99 @@ fontconfig = {
     "lineType"     : 3
 }
 
+# ---------------
+# video editing tools
+
+def get_fps(vfile):
+    if not os.path.isdir(vfile):
+        cap = cv2.VideoCapture(vfile)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        cap.release()
+        return fps
+    else:
+        return None
+
+
+def get_nframes(vfile):
+    if not os.path.isdir(vfile):
+        cap = cv2.VideoCapture(vfile)
+        n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+    else:
+        images = glob(os.path.join(vfile, '*.jp*'))
+        if not images:
+            images = glob(os.path.join(vfile, '*.png')) 
+        assert images, f"No image file (*.jpg or *.png) found in {vfile}"        
+        n_frames = len(images)
+
+    return n_frames 
+
+
+def get_WidthHeight(vfile):
+    if not os.path.isdir(vfile):
+        cap = cv2.VideoCapture(vfile)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+    else:
+        images = glob(os.path.join(vfile, '*.jp*'))
+        if not images:
+            images = glob(os.path.join(vfile, '*.png')) 
+        assert images, f"No image file (*.jpg or *.png) found in {vfile}"        
+        img = cv2.imread(images[0])
+        height,width = img.shape[:2]
+
+    return (width, height) 
+
+
+def get_frame(vfile, n_frames, startframe=0, finishframe=None):
+    if os.path.isdir(vfile):
+        images = glob(os.path.join(vfile, '*.jp*'))
+        if not images:
+            images = glob(os.path.join(vfile, '*.png'))
+        assert images, f"No image file (*.jpg or *.png) found in {vfile}"        
+
+        assert len(images) == n_frames, \
+            f"Mismatch in number of mask files versus number of frames\n" + \
+            f"n_frames={n_frames}, n_masks={len(images)}"
+
+        images = sorted(images,
+                        key=lambda x: int(x.split('/')[-1].split('.')[0]))
+
+        if finishframe is None:
+            finishframe = n_frames        
+
+        images = images[startframe:finishframe]
+
+        for img in images:
+            frame = cv2.imread(img)
+            yield frame
+
+    else:
+        cap = cv2.VideoCapture(vfile)
+
+        # start frame is indexed
+        # stop frame is set by controlling loop (caller)
+        if startframe != 0:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, startframe)
+            i = startframe
+        else: 
+            i = 0
+        
+        while True:
+            ret, frame = cap.read()
+            
+            if ret and i <= finishframe:
+                yield frame
+            else:
+                cap.release()
+                break 
+
+            i +=1
+
+
+# ------------
+# Bounding box (bbox) and mask utilities
 def bboxToList(bboxTensor):
     return  [float(x) for x in bboxTensor.to('cpu').tensor.numpy().ravel()]
 

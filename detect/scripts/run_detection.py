@@ -24,10 +24,10 @@ test_imutils = False
 test_single = False
 test_dilateErode = False
 test_sequence = False
-test_grouping = True 
-test_bbmasks = True
-test_maskFill = True
-test_maskoutput = True 
+test_grouping = False 
+test_bbmasks =  False
+test_maskFill = False 
+test_maskoutput = False 
 test_remoteInpaint = True 
 
 if test_imutils:
@@ -106,8 +106,8 @@ if test_remoteInpaint:
     rinpaint = InpaintRemote() 
     rinpaint.connectInpaint()
 
-    frameDirPath="/home/appuser/data/Colomar/fourInpaint/frames"
-    maskDirPath="/home/appuser/data/Colomar/fourInpaint/masks"
+    frameDirPath="/home/appuser/data/Colomar/threeInpaint/frames"
+    maskDirPath="/home/appuser/data/Colomar/threeInpaint/masks"
 
     trd1 = ThreadWithReturnValue(target=rinpaint.runInpaint,
                                  kwargs={'frameDirPath':frameDirPath,'maskDirPath':maskDirPath})

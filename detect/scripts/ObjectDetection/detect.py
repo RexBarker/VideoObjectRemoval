@@ -131,7 +131,7 @@ class DetectSingle:
 
         return res 
 
-    def annotate(self, im=None, addIndices=True):
+    def annotate(self, im=None, masks=None, bboxes=None, addIndices=True):
         """
             Adds annotation of the selected instances to the image 
             Indices are added according to the order of prediction 
@@ -140,8 +140,13 @@ class DetectSingle:
             im = self.im
 
         outim = im.copy()
+        if masks is None:
+            masks = self.masks
+        
+        if bboxes is None:
+            bboxes = self.bboxes
 
-        for i,(msk,bbox) in enumerate(zip(self.masks,self.bboxes)):
+        for i,(msk,bbox) in enumerate(zip(masks,bboxes)):
             color = self.thing_colors[i]
             x,y = [round(c) for c in imu.bboxCenter(bbox)]
             outim = imu.maskImage(outim,msk,color)
@@ -204,6 +209,8 @@ class TrackSequence(DetectSingle):
         
         return len(self.imglist)
     
+    def set_imagelist(self,imglist):
+        self.imglist = imglist
 
     def get_images(self):
         return self.imglist 
@@ -221,7 +228,19 @@ class TrackSequence(DetectSingle):
             self.objclasslist.append(self.selClassList)
         
         return len(self.masklist) 
+    
 
+    def get_annotatedResults(self, fileglob=None, filelist=None, **kwargs):
+
+        if len(self.masklist) == 0:
+            self.predict_sequence(fileglob=fileglob, filelist=filelist, **kwargs)
+        
+        annoImgs = []
+        for im, msks, bbxs in zip(self.imglist, self.masklist, self.bboxlist):
+            annoImgs.append(self.annotate(im,msks,bbxs))
+        
+        return annoImgs
+        
 
     def get_sequenceResults(self,getImage=True, getMasks=True, getBBoxes=True, getClasses=True):
         """
@@ -394,7 +413,7 @@ class GroupSequence(TrackSequence):
         for grpName,grpInst in allowObjNameInstances.items():
             inew = 0
             for iold, grp in enumerate(self.objBBMaskSeqGrpDict[grpName]):
-                if  ( iold in grpInst ) and  ( len(grp) >= minCount ):
+                if  ( grpInst is None or iold in grpInst ) and  ( len(grp) >= minCount ):
                     if not filteredSeq.get(grpName):
                         filteredSeq[grpName] = [grp]
                     else:
@@ -446,6 +465,12 @@ class GroupSequence(TrackSequence):
             specificObjectNameInstances = allObjNameIndices
             objIndexMap = { objn: {i:i for i in range(len(objl))} \
                             for objn,objl in self.objBBMaskSeqGrpDict.items() }
+        elif any([len(v)== 0 for v in specificObjectNameInstances.values()]):
+            objIndexMap = {}
+            for sobjn in specificObjectNameInstances.keys():
+                objIndexMap[sobjn] =  {i:i for i in range(len(self.objBBMaskSeqGrpDict[sobjn])) }
+                specificObjectNameInstances[sobjn] =  [i for i in range(len(self.objBBMaskSeqGrpDict[sobjn]))] 
+
         else:
             assert isinstance(specificObjectNameInstances,dict), \
                 "Expected a dictionary object for 'specificeeObjectNameInstances'"
@@ -641,7 +666,8 @@ class GroupSequence(TrackSequence):
                             MPEGconfig=None,
                             figsize=(10,10),
                             interval=30,
-                            repeat_delay=1000):
+                            repeat_delay=1000,
+                            useFFMPEGdirect=False):
         """
             Purpose: produce an animation object of the masked frames 
             returns an animation object to be rendered with HTML()
@@ -674,6 +700,7 @@ class GroupSequence(TrackSequence):
                 seqMasks = self.combinedMaskList
 
         outims = []
+        outrenders = []
         for i,im in enumerate(self.imglist):
             if useMasks:
                 msks = seqMasks[i] 
@@ -684,11 +711,13 @@ class GroupSequence(TrackSequence):
                     im = imu.maskImage(im,msks,self.thing_colors[0])
 
                 
+            outims.append(im)
             im = im[:,:,::-1]  # convert from BGR to RGB
+
             renderplt = plt.imshow(im,animated=True)
-            outims.append([renderplt])
+            outrenders.append([renderplt])
         
-        ani = animation.ArtistAnimation(fig, outims, interval=interval, blit=True,
+        ani = animation.ArtistAnimation(fig, outrenders, interval=interval, blit=True,
                                 repeat_delay=repeat_delay)
 
         if MPEGfile is not None:
@@ -698,9 +727,12 @@ class GroupSequence(TrackSequence):
             if MPEGconfig is None:
                 MPEGconfig = self.MPEGconfig
 
-            mpegWriter = animation.writers['ffmpeg']
-            writer = mpegWriter(**MPEGconfig)
-            ani.save(MPEGfile,writer=writer)
+            if useFFMPEGdirect:
+                imu.writeFramesToVideo(outims,filePath=MPEGfile, fps=interval)
+            else:
+                mpegWriter = animation.writers['ffmpeg']
+                writer = mpegWriter(**MPEGconfig)
+                ani.save(MPEGfile,writer=writer)
 
         # return html object, or just animation object  
         return ani.to_html5_video() if toHTML else ani
