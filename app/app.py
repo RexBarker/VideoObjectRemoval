@@ -163,7 +163,7 @@ app.layout = html.Div(className='container', children=[
                     id='checklist-nms', 
                     options=[{'label': 'Enabled', 'value': 'enabled'}],
                     value=[])),
-
+        
                 Column(width=9, children=dcc.Slider(
                     id='slider-iou', min=0, max=1, step=0.05, value=0.5, 
                     marks={0: '0', 1: '1'})),
@@ -286,9 +286,10 @@ def update_dirpath(nc_single, nc_sequence, nc_inpaint, s_dirpath, s_fnmax, s_fnm
      State('slider-iou', 'value'),
      State('slider-framenums','value'),
      State('slider-confidence', 'value'),
-     State('checklist-nms', 'value')],
+     State('checklist-nms', 'value')
+     ],
 )
-def run_single(n_clicks, dirpath, iou, framerange, confidence, checklist):
+def run_single(n_clicks, dirpath, iou, framerange, confidence,checklist):
     apply_nms = 'enabled' in checklist
     if dirpath is not None and os.path.isdir(dirpath):
         fnames = getImageFileNames(dirpath)
@@ -339,7 +340,7 @@ def run_sequence(n_clicks, dirpath, framerange, confidence):
     if dirpath is not None and os.path.isdir(dirpath):
         fnames = getImageFileNames(dirpath)
     else: 
-        return [0], -1 
+        return [0], "Null:None" 
     
     fmin, fmax = framerange
     fnames = fnames[fmin:fmax]
@@ -347,13 +348,24 @@ def run_sequence(n_clicks, dirpath, framerange, confidence):
     # was this a repeat?
     if len(detr.imglist) != 0:
         if fnames == detr.selectFiles:
-            return [0], -1
+            return [0], "Null:None" 
         else:
             detr.__init__()
 
     vfile = compute_sequence(fnames,framerange,confidence)    
-    return [50], vfile 
+    # Dan, fix this.  We need a way to get all file names as object to compute sequence
 
+    #return [50], {'output': vfile}
+    return [50], f'output:{vfile}'
+
+#@app.callback(Output(),
+#              [Input()])
+#def start_compute_sequence():
+#    vfile = compute_sequence(fnames,framerange,confidence)    
+#
+#@app.callback(Output(),
+#              [Input()])
+#def end_compute_sequence():
 
 @cache.memoize()
 def compute_sequence(fnames,framerange,confidence):
@@ -377,11 +389,15 @@ def compute_sequence(fnames,framerange,confidence):
 @app.callback(Output('sequence-output','url'),
               [Input('signal','children')],
               [State('sequence-output','url')])
-def serve_video(vfile,currurl):
+def serve_video(signal,currurl):
     if currurl is None: 
         return 'static/result.mp4'
     else:
-        if vfile is not None and isinstance(vfile,str) and os.path.exists(f"./static/{vfile}"):
+        sigtype,vfile = signal.split(":")
+        if vfile is not None and \
+           isinstance(vfile,str) and \
+           sigtype == 'output' and \
+           os.path.exists(f"./static/{vfile}"):
             return f"static/{vfile}"
         else:
             return currurl 
@@ -437,4 +453,4 @@ if __name__ == '__main__':
     if not os.path.exists(tempfile):
         createNullVideo(tempfile)
 
-    app.run_server(debug=True,host='0.0.0.0')
+    app.run_server(debug=True,host='0.0.0.0',processes=1,threaded=True)
