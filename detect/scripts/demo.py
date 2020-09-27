@@ -6,6 +6,7 @@ import cv2
 import argparse
 import tempfile
 from glob import glob
+from time import sleep
 import numpy as np
 import ObjectDetection.imutils as imu
 from ObjectDetection.detect import GroupSequence 
@@ -40,8 +41,8 @@ parser.add_argument('--start', type=int, required=False, default=None,
 parser.add_argument('--finish', type=int, required=False, default=None,
                     help="finish at frame number (negative numbers indicate from end)")
 
-parser.add_argument('--outfile',type=str,required=True, 
-                    help="Output file (.mp4)")
+parser.add_argument('--outfile',type=str,required=False, default="results.mp4",
+                    help="Output file (.mp4), default='results.mp4'")
 
 parser.add_argument('--objlist',type=str,nargs='+', default=None,
                     help='object list, quote delimited per instance: "person:1,5,2" "car:0,2"')
@@ -78,6 +79,10 @@ if __name__ == '__main__':
     # check args
     assert sum([args.annotateOnly, args.sequenceOnly]) <= 1, \
         "Ambiguous arguments for 'annotateOnly' and 'sequenceOnly' given"
+
+    # make sure output file is mp4
+    assert ".mp4" in args.outfile, \
+        f"Only MP4 files are supported for output, got:{args.outfile}"
 
     # determine number of frames
     vfile = args.input
@@ -163,123 +168,53 @@ if __name__ == '__main__':
         groupseq.dilateErode_MaskSequence(kernelShape=args.dilationK,
                                           maskHalfWidth=args.dilationW)
 
+    # output sequence video only
     if args.sequenceOnly:
         groupseq.create_animationObject(MPEGfile=args.outfile,
                                         interval=fps, 
                                         useFFMPEGdirect=True)
+        sys.exit(0)
 
-    #groupseq.fill_ObjBBMaskSequence()
+    # perform inpainting
+    with tempfile.TemporaryDirectory(dir=os.path.dirname(args.outfile)) as tempdir:
 
+        frameDirPath =os.path.join(tempdir,"frames")
+        maskDirPath = os.path.join(tempdir,"masks")
+        resultDirPath = os.path.join(os.path.join(tempdir,"Inpaint_Res"),"inpaint_res")
 
+        groupseq.write_ImageMaskSequence(
+            writeImagesToDirectory=frameDirPath,
+            writeMasksToDirectory=maskDirPath)
 
+        rinpaint = InpaintRemote() 
+        rinpaint.connectInpaint()
 
+        trd1 = ThreadWithReturnValue(target=rinpaint.runInpaint,
+                                 kwargs={'frameDirPath':frameDirPath,'maskDirPath':maskDirPath})
+        trd1.start() 
 
+        print("working:",end='',flush=True)
+        while trd1.is_alive():
+            print('.',end='',flush=True)
+            sleep(1)
+
+        print("\nfinished")
+        rinpaint.disconnectInpaint()
+
+        stdin,stdout,stderr = trd1.join()
+        ok = False
+        for l in stdout:
+            if "Propagation has been finished" in l: 
+                ok = True
+            print(l.strip())
+        
+        assert ok, "Could not determine if results were valid!"
+        
+        print(f"\n....Writing results to {args.outfile}")
+
+        resultfiles = sorted(glob(os.path.join(resultDirPath,"*.png")))
+        imgres = [ cv2.imread(f) for f in resultfiles]
+        imu.writeFramesToVideo(imgres, filePath=args.outfile, fps=fps)
+        print(f"Finished writing {args.outfile} ")
 
     print("Done")
-
-
-
-
-
-
-"""
-if test_imutils:
-    bbtest = [0.111, 0.123, 0.211, 0.312]
-    bbc = imu.bboxCenter(bbtest)
-    print(bbc)
-
-if test_single:
-    detect = DetectSingle(selectObjectNames=['person','car'])
-    imgfile = "../data/input.jpg"
-    detect.predict(imgfile)
-    imout = detect.annotate()
-
-    cv2.imshow('results',imout)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-    imout = detect.visualize_all(scale=1.2)
-    cv2.imshow('results',imout)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows(); 
-
-if test_dilateErode:
-    detect = DetectSingle(selectObjectNames=['person','car'])
-    imgfile = "../data/input.jpg"
-    detect.predict(imgfile)
-    masks = detect.masks
-    mask = imu.combineMasks(masks)
-
-    orig = "original"
-    modf = "DilationErosion"
-    cv2.namedWindow(orig)
-    cv2.namedWindow(modf)
-    
-    # single dilation operation
-    modmask = imu.dilateErodeMask(mask)  
-    cv2.imshow(orig,imu.maskToImg(mask))
-    cv2.imshow(modf,imu.maskToImg(modmask))
-    cv2.waitKey(0)
-
-    modmask = imu.dilateErodeMask(mask,actionList=['dilate','erode','dilate'])  
-    cv2.imshow(orig,imu.maskToImg(mask))
-    cv2.imshow(modf,imu.maskToImg(modmask))
-    cv2.waitKey(0)
-
-    cv2.destroyAllWindows()
-
-
-if test_sequence:
-    fnames = sorted(glob("../data/Colomar/frames/*.png"))[200:400]
-    trackseq = TrackSequence(selectObjectNames=['person','car'])
-    trackseq.predict_sequence(filelist=fnames)
-    res = trackseq.get_sequenceResults()
-
-if test_grouping:
-    fnames = sorted(glob("../data/Colomar/frames/*.png"))[200:400]
-    groupseq = GroupSequence(selectObjectNames=['person','car'])
-    groupseq.load_images(filelist=fnames)
-    groupseq.groupObjBBMaskSequence(useBBmasks=test_bbmasks)
-    res = groupseq.get_groupedResults(getSpecificObjNames='person')
-
-if test_grouping and test_maskFill:
-    groupseq.filter_ObjBBMaskSeq(allowObjNameInstances={'person':[2]},minCount=70)
-    #groupseq.fill_ObjBBMaskSequence(specificObjectNameInstances={'person':[0,1,2]})
-    groupseq.fill_ObjBBMaskSequence()
-
-if test_grouping and test_maskoutput:
-    groupseq.combine_MaskSequence()
-    groupseq.dilateErode_MaskSequence(kernelShape='elipse',maskHalfWidth=10)
-    groupseq.write_ImageMaskSequence(cleanDirectory=True,
-        writeImagesToDirectory="../data/Colomar/fourInpaint/frames",
-        writeMasksToDirectory="../data/Colomar/fourInpaint/masks")
-    groupseq.create_animationObject(MPEGfile="../data/Colomar/result.mp4")
-
-if test_remoteInpaint:
-    rinpaint = InpaintRemote() 
-    rinpaint.connectInpaint()
-
-    frameDirPath="/home/appuser/data/Colomar/fourInpaint/frames"
-    maskDirPath="/home/appuser/data/Colomar/fourInpaint/masks"
-
-    trd1 = ThreadWithReturnValue(target=rinpaint.runInpaint,
-                                 kwargs={'frameDirPath':frameDirPath,'maskDirPath':maskDirPath})
-    trd1.start() 
-
-    print("working:",end='',flush=True)
-    while trd1.is_alive():
-        print('.',end='',flush=True)
-        sleep(1)
-
-    print("\nfinished")
-    rinpaint.disconnectInpaint()
-
-    stdin,stdout,stderr = trd1.join()
-    ok = False
-    for l in stdout:
-        if "Propagation has been finished" in l: 
-            ok = True
-        print(l.strip())
-
-print("done")
-"""

@@ -253,7 +253,7 @@ def writeImagesToDirectory(imageList,dirPath,minPadLength=None,imgtype='png',cle
     assert imgtype in ('png', 'jpg'), f"Invalid image type '{imgtype}' given"
 
     if not os.path.isdir(dirPath):
-        path = ''
+        path = '/' if dirPath.startswith("/") else ''
         for d in dirPath.split('/'):
             if not d: continue
             path += d + '/'
@@ -282,7 +282,7 @@ def writeMasksToDirectory(maskList,dirPath,minPadLength=None,imgtype='png',clean
     assert imgtype in ('png', 'jpg'), f"Invalid image type '{imgtype}' given"
 
     if not os.path.isdir(dirPath):
-        path = ''
+        path = '/' if dirPath.startswith("/") else ''
         for d in dirPath.split('/'):
             if not d: continue
             path += d + '/'
