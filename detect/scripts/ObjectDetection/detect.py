@@ -667,7 +667,8 @@ class GroupSequence(TrackSequence):
                             figsize=(10,10),
                             interval=30,
                             repeat_delay=1000,
-                            useFFMPEGdirect=False):
+                            useFFMPEGdirect=False,
+                            useFOURCCstr=None):
         """
             Purpose: produce an animation object of the masked frames 
             returns an animation object to be rendered with HTML()
@@ -728,7 +729,7 @@ class GroupSequence(TrackSequence):
                 MPEGconfig = self.MPEGconfig
 
             if useFFMPEGdirect:
-                imu.writeFramesToVideo(outims,filePath=MPEGfile, fps=interval)
+                imu.writeFramesToVideo(outims,filePath=MPEGfile, fps=interval,fourccstr=useFOURCCstr)
             else:
                 mpegWriter = animation.writers['ffmpeg']
                 writer = mpegWriter(**MPEGconfig)

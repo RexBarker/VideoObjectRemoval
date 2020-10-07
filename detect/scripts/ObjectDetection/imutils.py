@@ -18,6 +18,16 @@ fontconfig = {
 # ---------------
 # video editing tools
 
+def get_fourcc_string(vfile):
+    if not os.path.isdir(vfile):
+        cap = cv2.VideoCapture(vfile)
+        vcodec = cap.get(cv2.CAP_PROP_FOURCC)
+        vcodecstr = "".join([chr((int(vcodec) >> 8 * i) & 0xFF) for i in range(4)])
+        cap.release()
+        return vcodecstr
+    else:
+        return None
+
 def get_fps(vfile):
     if not os.path.isdir(vfile):
         cap = cv2.VideoCapture(vfile)
@@ -302,7 +312,7 @@ def writeMasksToDirectory(maskList,dirPath,minPadLength=None,imgtype='png',clean
     return n_frames
 
 
-def writeFramesToVideo(imageList,filePath,fps=30):
+def writeFramesToVideo(imageList,filePath,fps=30,fourccstr=None):
     """
         Writes given set of frames to video file (platform specific coding)
         format is 'mp4' or 'avi'
@@ -320,7 +330,9 @@ def writeFramesToVideo(imageList,filePath,fps=30):
                 os.mkdir(path)
 
     if filePath.endswith(".mp4"):
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        if fourccstr is None:
+            fourccstr = 'mp4v' 
+        fourcc = cv2.VideoWriter_fourcc(*fourccstr)
     elif filePath.endswith(".avi"):
         fourcc = cv2.VideoWriter_fourcc(*'XVID')
     else:

@@ -135,9 +135,15 @@ app.layout = html.Div(className='container', children=[
         Column(width=6, children=[
             dcc.Input(id='input-dirpath', style={'width': '100%'}, placeholder='Insert dirpath...'),
         ]),
-        Column(html.Button("Run Single", id='button-single', n_clicks=0), width=2),
-        Column(html.Button("Run Sequence", id='button-sequence', n_clicks=0), width=2),
-        Column(html.Button("Run Inpaint", id='button-inpaint', n_clicks=0), width=2)
+        Column(width=2,children=[
+            html.Button("Run Single", id='button-single', n_clicks=0)
+        ]),
+        Column(width=2,children=[
+            html.Button("Run Sequence", id='button-sequence', n_clicks=0)
+        ]),
+        Column(width=2,children=[
+            html.Button("Run Inpaint", id='button-inpaint', n_clicks=0)
+        ])
     ]),
 
     html.Hr(),
@@ -156,19 +162,6 @@ app.layout = html.Div(className='container', children=[
     html.Hr(),
 
     Row([
-        Column(width=7, children=[
-            html.P('Non-maximum suppression (IoU):'),
-            Row([
-                Column(width=3, children=dcc.Checklist(
-                    id='checklist-nms', 
-                    options=[{'label': 'Enabled', 'value': 'enabled'}],
-                    value=[])),
-        
-                Column(width=9, children=dcc.Slider(
-                    id='slider-iou', min=0, max=1, step=0.05, value=0.5, 
-                    marks={0: '0', 1: '1'})),
-            ])
-        ]),
         Column(width=5, children=[
             html.P('Confidence Threshold:'),
             dcc.Slider(
@@ -180,9 +173,60 @@ app.layout = html.Div(className='container', children=[
     Row(dcc.Graph(id='model-output', style={"height": "70vh"})),
 
     html.Hr(),
-
     Row([
-        Column(width=2, children=[html.P("Current progress")]),
+        Column(width=7, children=[
+            html.P('Object selection:'),
+            Row([
+                Column(width=3, children=dcc.Checklist(
+                    id='cb-person', 
+                    options=[
+                             {'label': ' person', 'value': 'person'},
+                             {'label': ' handbag', 'value': 'handbag'},
+                             {'label': ' backpack', 'value': 'backpack'},
+                             {'label': ' suitcase', 'value': 'suitcase'},
+                            ],
+                    value = ['person', 'handbag','backpack','suitcase'])),
+                Column(width=3, children=dcc.Checklist(
+                    id='cb-vehicle', 
+                    options=[
+                             {'label': ' car', 'value': 'car'},
+                             {'label': ' truck', 'value': 'truck'},
+                             {'label': ' bus', 'value': 'bus'},
+                            ],
+                    value = ['car', 'truck'])),
+                Column(width=3, children=dcc.Checklist(
+                    id='cb-environment', 
+                    options=[
+                             {'label': ' traffic light', 'value': 'traffic light'},
+                             {'label': ' stop sign', 'value': 'stop sign'},
+                             {'label': ' bench', 'value': 'bench'},
+                            ],
+                    value = []))
+            ])
+        ]),
+
+        html.Hr(),
+        Column(width=7, children=[
+            html.P('Processing options:'),
+            Row([
+                Column(width=3, children=dcc.Checklist(
+                    id='cb-bbmask', 
+                    options=[
+                             {'label': ' use BBmask', 'value': 'enabled'},
+                            ],
+                    value=[])),
+                html.P('dilation half-width (no dilation=0):'),
+                Column(width=3, children= dcc.Input(
+                    id='input-dilationhwidth',
+                    type='number',
+                    value=0)),
+            ])
+        ]),
+    ]),
+ 
+    # Sequence Video
+    Row([
+        Column(width=2, children=[html.P("Sequence Result")]),
         #Column(width=12, children=[html.Progress(id='progress-sequence',max=100,value=23)])
         Column(width=12, children= [dbc.Progress(value=10,id='progress-sequence',striped=True)])
         #dbc.Progress(value=0,id='progress-sequence',striped=True)
@@ -192,6 +236,15 @@ app.layout = html.Div(className='container', children=[
     #html.Div(id='sequence-parent',children=[html.Video(id='sequence-output',style={"height": "70vh"})]),
     html.Div([ dash_player.DashPlayer(
         id='sequence-output',
+        url='static/result.mp4',
+        controls=True,
+        style={"height": "70vh"}) ]),
+
+    # Inpainting Video
+    html.Hr(),
+    html.P("Inpainting Output"),
+    html.Div([ dash_player.DashPlayer(
+        id='inpainting-output',
         url='static/result.mp4',
         controls=True,
         style={"height": "70vh"}) ]),
@@ -279,18 +332,14 @@ def update_dirpath(nc_single, nc_sequence, nc_inpaint, s_dirpath, s_fnmax, s_fnm
 
 
 @app.callback(
-    [Output('model-output', 'figure'),
-     Output('slider-iou', 'disabled')],
+    [Output('model-output', 'figure')],
     [Input('button-single', 'n_clicks')],
     [State('input-dirpath', 'value'),
-     State('slider-iou', 'value'),
      State('slider-framenums','value'),
-     State('slider-confidence', 'value'),
-     State('checklist-nms', 'value')
+     State('slider-confidence', 'value')
      ],
 )
-def run_single(n_clicks, dirpath, iou, framerange, confidence,checklist):
-    apply_nms = 'enabled' in checklist
+def run_single(n_clicks, dirpath, framerange, confidence):
     if dirpath is not None and os.path.isdir(dirpath):
         fnames = getImageFileNames(dirpath)
         imgfile = fnames[framerange[0]]
@@ -299,7 +348,7 @@ def run_single(n_clicks, dirpath, iou, framerange, confidence,checklist):
         go.Figure().update_layout(title='Incorrect dirpath')
         im = Image.new('RGB',(640,480))
         fig = pil_to_fig(im, showlegend=True, title='No Image')
-        return fig, not apply_nms
+        return fig,
 
     tstart = time.time()
     scores, boxes, selClasses = detect_scores_bboxes_classes(imgfile, detr)
@@ -324,7 +373,7 @@ def run_single(n_clicks, dirpath, iou, framerange, confidence,checklist):
 
         existing_classes.add(label)
 
-    return fig, not apply_nms
+    return fig, #, not apply_nms
 
 
 @app.callback(
@@ -355,8 +404,7 @@ def run_sequence(n_clicks, dirpath, framerange, confidence):
     vfile = compute_sequence(fnames,framerange,confidence)    
     # Dan, fix this.  We need a way to get all file names as object to compute sequence
 
-    #return [50], {'output': vfile}
-    return [50], f'output:{vfile}'
+    return [50], f'sequencevid:{vfile}'
 
 #@app.callback(Output(),
 #              [Input()])
@@ -378,25 +426,26 @@ def compute_sequence(fnames,framerange,confidence):
     vfile = 'sequence_' + datetime.now().strftime("%Y%m%d_%H%M%S") + ".mp4"
     if not os.environ.get("VSCODE_DEBUG"):
         detr.create_animationObject(framerange=framerange,
-                                    useMasks=True,
-                                    toHTML=False,
-                                    figsize=(20,15),
-                                    interval=30,
-                                    MPEGfile=os.path.join(staticdir,vfile))
+                                useMasks=True,
+                                toHTML=False,
+                                figsize=(20,15),
+                                interval=30,
+                                MPEGfile=os.path.join(staticdir,vfile),
+                                useFFMPEGdirect=False)
     return vfile 
 
 
 @app.callback(Output('sequence-output','url'),
               [Input('signal','children')],
               [State('sequence-output','url')])
-def serve_video(signal,currurl):
+def serve_sequence_video(signal,currurl):
     if currurl is None: 
         return 'static/result.mp4'
     else:
         sigtype,vfile = signal.split(":")
         if vfile is not None and \
            isinstance(vfile,str) and \
-           sigtype == 'output' and \
+           sigtype == 'sequencevid' and \
            os.path.exists(f"./static/{vfile}"):
             return f"static/{vfile}"
         else:
