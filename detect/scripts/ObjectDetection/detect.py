@@ -47,7 +47,6 @@ class DetectSingle:
         self.selObjNames = selectObjectNames
         self.selObjIndices = []
 
-
         # initialize engine
         self.__initEngine(score_threshold, model_zoo_config_path)
 
@@ -92,6 +91,8 @@ class DetectSingle:
         h,w,_ = self.im.shape
         self.masks = [imu.bboxToMask(bbx,(h,w)) for bbx in self.bboxes]
 
+    def set_score_threshold(self,confidence):
+        self.score_threshold = confidence
 
     def predict(self,img,selObjectNames=None,useBBmasks=False):
         if isinstance(img,str):
@@ -513,12 +514,19 @@ class GroupSequence(TrackSequence):
 
                 # determine missing indices
                 missedIndices = [index for index, row in targetBBDF.iterrows() if row.isnull().any()]
+                goodIndices = [ i for i in range(len(targetBBDF)) if i not in missedIndices]
+
+                minGoodIndex = min(goodIndices)
+                maxGoodIndex = max(goodIndices)
+                missedIndices = [ i for i in missedIndices if i > minGoodIndex and i < maxGoodIndex]
 
                 # extrapolate missing bbox coordinates
                 targetBBDF = targetBBDF.interpolate(limit_direction='both', kind='linear')
 
                 # output bboxes, resequenced
-                bbxseq = [[r.x0,r.y0,r.x1,r.y1] for _,r,*_ in targetBBDF.iterrows()] 
+                for i in missedIndices:
+                    r = targetBBDF.iloc[i]
+                    bbxseq[i] = [r.x0,r.y0,r.x1,r.y1]
 
                 # create missing masks by stretching or shrinking known masks from i-1 
                 # (relies on prior prediction of missing mask, for sequential missing masks)

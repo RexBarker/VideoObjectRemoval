@@ -188,9 +188,10 @@ def maskImage(im, mask, mask_color=(0,0,255), inplace=False):
         outim = im
     else:
         outim = im.copy()
-    
-    for i in range(3):
-        outim[:,:,i] = (mask > 0) * mask_color[i] + (mask == 0) * outim[:, :, i]
+
+    if not isinstance(mask,list):
+        for i in range(3):
+            outim[:,:,i] = (mask > 0) * mask_color[i] + (mask == 0) * outim[:, :, i]
 
     return outim
 
