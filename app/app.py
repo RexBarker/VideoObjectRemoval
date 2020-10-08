@@ -138,9 +138,9 @@ app.layout = html.Div(className='container', children=[
         Column(width=2,children=[
             html.Button("Run Single", id='button-single', n_clicks=0)
         ]),
-        Column(width=2,children=[
-            html.Button("Run Sequence", id='button-sequence', n_clicks=0)
-        ]),
+        #Column(width=2,children=[
+        #    html.Button("Run Sequence", id='button-sequence', n_clicks=0)
+        #]),
         Column(width=2,children=[
             html.Button("Run Inpaint", id='button-inpaint', n_clicks=0)
         ])
@@ -210,17 +210,31 @@ app.layout = html.Div(className='container', children=[
             html.P('Processing options:'),
             Row([
                 Column(width=3, children=dcc.Checklist(
-                    id='cb-bbmask', 
+                    id='cb-options', 
                     options=[
-                             {'label': ' use BBmask', 'value': 'enabled'},
+                             {'label': ' use BBmask', 'value': 'useBBmasks'},
+                             {'label': ' fill sequence', 'value': 'fillSequence'},
                             ],
-                    value=[])),
-                html.P('dilation half-width (no dilation=0):'),
-                Column(width=3, children= dcc.Input(
-                    id='input-dilationhwidth',
-                    type='number',
-                    value=0)),
+                    value=['fillSequence'])
+                ),
+                Column(width=3, children= [
+                    html.P('dilation half-width (no dilation=0):'),
+                    dcc.Input(
+                        id='input-dilationhwidth',
+                        type='number',
+                        value=0)
+                ]),
+                Column(width=3, children=[
+                    html.P('minimum seq. length'),
+                    dcc.Input(
+                        id='input-minseqlength',
+                        type='number',
+                        value=0)
+                ])
             ])
+        ]),
+        Column(width=2,children=[
+            html.Button("Run Sequence", id='button-sequence', n_clicks=0)
         ]),
     ]),
  
@@ -382,14 +396,26 @@ def run_single(n_clicks, dirpath, framerange, confidence):
     [Input('button-sequence', 'n_clicks')],
     [State('input-dirpath', 'value'),
      State('slider-framenums','value'),
-     State('slider-confidence', 'value')]
+     State('slider-confidence', 'value'),
+     State('cb-person','value'),
+     State('cb-vehicle','value'),
+     State('cb-environment','value'),
+     State('cb-options','value'),
+     State('input-dilationhwidth','value'),
+     State('input-minseqlength','value')]
 )
-def run_sequence(n_clicks, dirpath, framerange, confidence):
+def run_sequence(n_clicks, dirpath, framerange, confidence,
+                 cb_person, cb_vehicle, cb_environment, 
+                 cb_options, dilationhwidth, minsequencelength):
 
     if dirpath is not None and os.path.isdir(dirpath):
         fnames = getImageFileNames(dirpath)
     else: 
         return [0], "Null:None" 
+
+    selectObjects = [ *cb_person, *cb_vehicle, *cb_environment]
+    useBBmasks = 'useBBmasks' in cb_options
+    fillSequence = 'fillSequence' in cb_options
     
     fmin, fmax = framerange
     fnames = fnames[fmin:fmax]
@@ -398,10 +424,12 @@ def run_sequence(n_clicks, dirpath, framerange, confidence):
     if len(detr.imglist) != 0:
         if fnames == detr.selectFiles:
             return [0], "Null:None" 
-        else:
-            detr.__init__()
 
-    vfile = compute_sequence(fnames,framerange,confidence)    
+    detr.__init__(score_threshold=confidence)
+
+    vfile = compute_sequence(fnames,framerange,confidence,selectObjects,
+                             useBBmasks, fillSequence, 
+                             dilationhwidth, minsequencelength)    
     # Dan, fix this.  We need a way to get all file names as object to compute sequence
 
     return [50], f'sequencevid:{vfile}'
@@ -416,13 +444,30 @@ def run_sequence(n_clicks, dirpath, framerange, confidence):
 #def end_compute_sequence():
 
 @cache.memoize()
-def compute_sequence(fnames,framerange,confidence):
+def compute_sequence(fnames,framerange,confidence,selObjectNames,
+                     useBBmasks,fillSequence,
+                     dilationhwidth, minsequencelength):
     detr.selectFiles = fnames
 
     staticdir = os.path.join(os.getcwd(),"static")
     detr.load_images(filelist=fnames)
-    detr.predict_sequence()
+    detr.predict_sequence(useBBmasks=useBBmasks,selObjectNames=selObjectNames)
     detr.groupObjBBMaskSequence()
+
+    # filtered by object class, instance, and length 
+    if minsequencelength > 0: 
+        detr.filter_ObjBBMaskSeq(minCount=minsequencelength)
+
+    # fill sequence 
+    if fillSequence:
+        detr.fill_ObjBBMaskSequence()
+
+    # use dilation
+    if dilationhwidth > 0:
+        detr.combine_MaskSequence()
+        detr.dilateErode_MaskSequence(kernelShape='el', 
+                                      maskHalfWidth=dilationhwidth)
+
     vfile = 'sequence_' + datetime.now().strftime("%Y%m%d_%H%M%S") + ".mp4"
     if not os.environ.get("VSCODE_DEBUG"):
         detr.create_animationObject(framerange=framerange,
