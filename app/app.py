@@ -7,6 +7,7 @@ from datetime import datetime
 
 #import flask
 #from flask import send_file, make_response 
+#from flask import send_from_directory
 from flask_caching import Cache 
 import dash
 import dash_player
@@ -141,9 +142,9 @@ app.layout = html.Div(className='container', children=[
         #Column(width=2,children=[
         #    html.Button("Run Sequence", id='button-sequence', n_clicks=0)
         #]),
-        Column(width=2,children=[
-            html.Button("Run Inpaint", id='button-inpaint', n_clicks=0)
-        ])
+        #Column(width=2,children=[
+        #    html.Button("Run Inpaint", id='button-inpaint', n_clicks=0)
+        #])
     ]),
 
     html.Hr(),
@@ -233,21 +234,31 @@ app.layout = html.Div(className='container', children=[
                 ])
             ])
         ]),
-        Column(width=2,children=[
-            html.Button("Run Sequence", id='button-sequence', n_clicks=0)
-        ]),
     ]),
  
     # Sequence Video
+    html.Hr(),
     Row([
-        Column(width=2, children=[html.P("Sequence Result")]),
-        #Column(width=12, children=[html.Progress(id='progress-sequence',max=100,value=23)])
-        Column(width=12, children= [dbc.Progress(value=10,id='progress-sequence',striped=True)])
-        #dbc.Progress(value=0,id='progress-sequence',striped=True)
+        Column(width=2,children=[
+            html.Button("Run Sequence", id='button-sequence', n_clicks=0),
+            dcc.Loading(id='loading-sequence-bobble',
+                        type='circle',
+                        children=html.Div(id='loading-sequence'))
+        ]),
+        Column(width=2,children=[]), # place holder
+        Row([
+            Column(width=4, children=[
+                html.P("Start Frame:"),
+                html.Label("0",id='sequence-startframe')
+            ]),
+            Column(width=4, children=[]),
+            Column(width=4, children=[
+                html.P("End Frame:"),
+                html.Label("0",id='sequence-endframe')
+            ])
+        ]),
     ]),
-
-    #html.Video(id='sequence-output',src='/static/result.mp4',controls=True,style={"height": "70vh"}),
-    #html.Div(id='sequence-parent',children=[html.Video(id='sequence-output',style={"height": "70vh"})]),
+    html.P("Sequence Output"),
     html.Div([ dash_player.DashPlayer(
         id='sequence-output',
         url='static/result.mp4',
@@ -256,6 +267,26 @@ app.layout = html.Div(className='container', children=[
 
     # Inpainting Video
     html.Hr(),
+    Row([
+        Column(width=2,children=[
+            html.Button("Run Inpaint", id='button-inpaint', n_clicks=0),
+            dcc.Loading(id='loading-inpaint-bobble',
+                        type='circle',
+                        children=html.Div(id='loading-inpaint'))
+        ]),
+        Column(width=2,children=[]), # place holder
+        Row([
+            Column(width=4, children=[
+                html.P("Start Frame:"),
+                html.Label("0",id='inpaint-startframe')
+            ]),
+            Column(width=4, children=[]),
+            Column(width=4, children=[
+                html.P("End Frame:"),
+                html.Label("0",id='inpaint-endframe')
+            ])
+        ]),
+    ]),
     html.P("Inpainting Output"),
     html.Div([ dash_player.DashPlayer(
         id='inpainting-output',
@@ -264,7 +295,8 @@ app.layout = html.Div(className='container', children=[
         style={"height": "70vh"}) ]),
 
     # hidden signal value
-    html.Div(id='signal', style={'display': 'none'})
+    html.Div(id='signal', style={'display': 'none'}),
+    #html.Div(id='signal-download',style={'display': 'none'}),
 
 ])
 
@@ -276,11 +308,18 @@ app.layout = html.Div(className='container', children=[
 # purpose:  to update min/max boxes of the slider 
 @app.callback(
     [Output('input-framenmin','value'),
-     Output('input-framenmax','value')],
+     Output('input-framenmax','value'),
+     Output('sequence-startframe','children'),
+     Output('sequence-endframe','children'),
+     Output('inpaint-startframe','children'),
+     Output('inpaint-endframe','children')
+     ],
     [Input('slider-framenums','value')]
 )
 def update_framenum_minmax(framenumrange):
-    return framenumrange[0], framenumrange[1]
+    return framenumrange[0], framenumrange[1], \
+           str(framenumrange[0]), str(framenumrange[1]), \
+           str(framenumrange[0]), str(framenumrange[1])
 
 
 @app.callback(
@@ -316,35 +355,10 @@ def update_dirpath(nc_single, nc_sequence, nc_inpaint, s_dirpath, s_fnmax, s_fnm
         
     return fnmax, fnmarks, fnvalue, dirpath
 
-
-# update_framenum_slider()
-# purpose:  to update position of the slider 
-#@app.callback(
-#    [Output('slider-framenums','value')],
-#    [Input('input-framenmin','value'),
-#     Input('input-framenmax','value')]
-#)
-#def update_framenum_slider(framenummin,framnummax):
-#    return [framenummin, framnummax] 
-
-
-#@app.callback(
-#    [Output('button-single', 'n_clicks'),
-#     Output('slider-framenums','max'),
-#     Output('slider-framenums','marks'),
-#     Output('slider-framenums','value'),
-#     Output('input-dirpath', 'value')],
-#    [Input('button-sequence', 'n_clicks')],
-#    [State('button-single', 'n_clicks')])
-#def run_sequence(random_n_clicks, run_n_clicks):
-#    #return run_n_clicks+1, RANDOM_URLS[random_n_clicks%len(RANDOM_URLS)]
-#    dirpath = "/home/appuser/data/Colomar/frames" 
-#    fnames = getImageFileNames(dirpath)
-#    fnmax = len(fnames)-1
-#    marks = {0: '0', fnmax: f"{fnmax}"}
-#    return run_n_clicks+1, fnmax, marks, [0,fnmax], dirpath
-
-
+# ***************
+# * run_single
+# ***************
+# create single prediction at first frame
 @app.callback(
     [Output('model-output', 'figure')],
     [Input('button-single', 'n_clicks')],
@@ -387,11 +401,14 @@ def run_single(n_clicks, dirpath, framerange, confidence):
 
         existing_classes.add(label)
 
-    return fig, #, not apply_nms
+    return fig, 
 
-
+# ***************
+# run_sequence
+# ***************
+# Produce sequence prediction with grouping  
 @app.callback(
-    [Output('progress-sequence', 'value'),
+    [Output('loading-sequence', 'value'),
      Output('signal','children')],
     [Input('button-sequence', 'n_clicks')],
     [State('input-dirpath', 'value'),
@@ -411,7 +428,7 @@ def run_sequence(n_clicks, dirpath, framerange, confidence,
     if dirpath is not None and os.path.isdir(dirpath):
         fnames = getImageFileNames(dirpath)
     else: 
-        return [0], "Null:None" 
+        return "", "Null:None" 
 
     selectObjects = [ *cb_person, *cb_vehicle, *cb_environment]
     useBBmasks = 'useBBmasks' in cb_options
@@ -423,25 +440,16 @@ def run_sequence(n_clicks, dirpath, framerange, confidence,
     # was this a repeat?
     if len(detr.imglist) != 0:
         if fnames == detr.selectFiles:
-            return [0], "Null:None" 
+            return "", "Null:None" 
 
     detr.__init__(score_threshold=confidence)
 
     vfile = compute_sequence(fnames,framerange,confidence,selectObjects,
                              useBBmasks, fillSequence, 
                              dilationhwidth, minsequencelength)    
-    # Dan, fix this.  We need a way to get all file names as object to compute sequence
 
-    return [50], f'sequencevid:{vfile}'
+    return "", f'sequencevid:{vfile}'
 
-#@app.callback(Output(),
-#              [Input()])
-#def start_compute_sequence():
-#    vfile = compute_sequence(fnames,framerange,confidence)    
-#
-#@app.callback(Output(),
-#              [Input()])
-#def end_compute_sequence():
 
 @cache.memoize()
 def compute_sequence(fnames,framerange,confidence,selObjectNames,
@@ -503,16 +511,16 @@ def serve_sequence_video(signal,currurl):
             return currurl 
 
 
-
-#@app.callback(
-#    [Output()]
-#    [Input('download-button')]
+#@app.callback(Output('signal-download','children'),
+#              [Input('download-sequence','n_clicks')],
+#              [State('sequence-output', 'url')]
 #)
-#def download_video(n_clicks):
+#def download_video(n_clicks,currurl):
 #    root_dir = os.getcwd()
-#    path='test.mov'
-#    return flask.send_from_directory(os.path.join(root_dir,'static'),path)
-
+#    path=os.path.join(root_dir,os.path.dirname(currurl))
+#    fname = os.path.basename(currurl)
+#    return send_from_directory(path,fname)
+#    #return "Null:None"
 
 
 # ---------------------------------------------------------------------
