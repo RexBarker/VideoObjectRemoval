@@ -492,41 +492,17 @@ def serve_sequence_video(signal,currurl):
            isinstance(vfile,str) and \
            sigtype == 'sequencevid' and \
            os.path.exists(f"./static/{vfile}"):
+
+            # remove old file
+            if os.path.exists(currurl):
+                os.remove(currurl)
+
+            # serve new file
             return f"static/{vfile}"
         else:
             return currurl 
 
 
-#@app.callback(Output('sequence-parent','children'), [Input('signal','children')])
-#def serve_video(vid_name):
-#    root_dir = os.path.join(os.getcwd(),'static')
-#    vid_path = os.path.join(root_dir,vid_name)
-#    resp = html.Video(src=vid_path, controls=True,style={"height": "70vh"},autoPlay=True)
-#    #resp = make_response(send_file(vid_path,'video/mp4'))
-#    #resp.headers['Content-Disposition'] = 'inline'
-#    return resp 
-
-
-# simply forces refresh of video object
-#@server.after_request
-#@server.route('/static/<path:path>')
-#def serve_video(inpath):
-#    return inpath
-
-#@server.route('/static/<vid_name>')
-#def serve_video(vid_name):
-#    root_dir = os.path.join(os.getcwd(),'static')
-#    vid_path = os.path.join(root_dir,vid_name)
-#    resp = make_response(send_file(vid_path,'video/mp4'))
-#    resp.headers['Content-Disposition'] = 'inline'
-#    return resp 
-
-#@server.after_request
-#def add_header(response):
-#    #response.cache_control.max_age = 1
-#    if 'Cache-Control' not in response.headers:
-#        response.headers['Cache-Control'] = 'no-store'
-#    return response
 
 #@app.callback(
 #    [Output()]

@@ -176,8 +176,9 @@ def combineMasks(maskList):
     elif len(maskList) == 1:
         return maskList[0]     
 
-    maskcomb = maskList[0].copy()
-    for msk in maskList[1:]:
+    masks = [ m for m in maskList if len(m) ]
+    maskcomb = masks.pop(0).copy() 
+    for msk in masks:
         maskcomb = np.logical_or(maskcomb,msk)
     
     return maskcomb

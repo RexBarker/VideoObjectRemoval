@@ -589,15 +589,18 @@ class GroupSequence(TrackSequence):
         """
         if masklist is None:
             if self.combinedMaskList is None:
-                raise Exception("No masks were given for dilateErode operation")
+                raise Exception("No combined masks were given for dilateErode operation")
             else:
                 masklist = self.combinedMaskList
         
         maskListOut = []
+        
         for msk in masklist:
-            maskListOut.append(imu.dilateErodeMask(msk, actionList=actionList,
-                                                        kernelShape=kernelShape,
-                                                        maskHalfWidth=maskHalfWidth)) 
+            msksout =  imu.dilateErodeMask(msk, actionList=actionList,
+                                                kernelShape=kernelShape,
+                                                maskHalfWidth=maskHalfWidth) 
+            maskListOut.append(msksout) 
+
         if inPlace:
             self.combinedMaskList = maskListOut 
             return True
