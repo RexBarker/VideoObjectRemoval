@@ -24,6 +24,65 @@ class InpaintRemote(SSHClient):
         self.connect(hostname,username=username,password=password)
         self.isConnected = True
 
+    def executeCommandsInpaint(self,commands):
+        """
+            Executes specified commands in container, returns results 
+        """
+        assert self.isConnected, "Client was not connected!"
+
+        start = time()
+        results = { 'stdin': [], 'stdout': [], 'stderr': [] }
+        for cmd in commands:
+            stdin, stdout, stderr = self.exec_command(cmd)  # non-blocking call
+            exit_status = stdout.channel.recv_exit_status() # blocking call
+            results['stdin'].append(stdin)
+            results['stdout'].append(stdout)
+            results['stderr'].append(stderr)
+
+        finish = time()
+        return results
+
+
+    def testConnectionInpaint(self,testCommands=None,hardErrors=True):
+        """
+            Tests simple connectivity to the container
+            to see if host is accessible, and all command paths are accessible
+        """
+        assert self.isConnected, "Client was not connected!"
+
+        if testCommands is None: 
+            testCommands = [ f'cd {self.c["workingDir"]} ; pwd',
+                             f'ls {self.c["pythonPath"]}',
+                             f'ls {self.c["scriptPath"]}',
+                             f'ls {self.c["pretrainedModle"]}',
+                           ] 
+
+        start = time()
+        errors = []
+        for cmd in testCommands:
+            stdin, stdout, stderr = self.exec_command(cmd)  # non-blocking call
+            exit_status = stdout.channel.recv_exit_status() # blocking call
+            if stderr:
+                errors.append({'cmd': cmd, 'message': stderr})
+            finish = time()
+
+        if any(errors):
+            disconnectInpaint()
+            if hardErrors:
+                for err in errors:
+                    print(f"Error executing remote command:\n<<{err['cmd']}>>")
+                    print(f"\nResult output:\n")
+                    for l in err['message']:
+                        print(l.strip())
+                    return False
+
+                raise Exception("Errors encountered while testing remote execution")
+            else:
+                return errors
+
+        return True 
+
+
     def disconnectInpaint(self):
         self.close()
         self.isConnected = False

@@ -21,6 +21,7 @@ from PIL import Image
 from model import detect_scores_bboxes_classes, \
                   filter_boxes, detr, createNullVideo
 from model import CLASSES, DEVICE 
+from model import inpaint, testContainerWrite, performInpainting
 
 basedir = '/home/appuser/app'
 print(f"ObjectDetect loaded, using DEVICE={DEVICE}")
@@ -295,8 +296,8 @@ app.layout = html.Div(className='container', children=[
         style={"height": "70vh"}) ]),
 
     # hidden signal value
-    html.Div(id='signal', style={'display': 'none'}),
-    #html.Div(id='signal-download',style={'display': 'none'}),
+    html.Div(id='signal-sequence', style={'display': 'none'}),
+    html.Div(id='signal-inpaint', style={'display': 'none'}),
 
 ])
 
@@ -409,7 +410,7 @@ def run_single(n_clicks, dirpath, framerange, confidence):
 # Produce sequence prediction with grouping  
 @app.callback(
     [Output('loading-sequence', 'value'),
-     Output('signal','children')],
+     Output('signal-sequence','children')],
     [Input('button-sequence', 'n_clicks')],
     [State('input-dirpath', 'value'),
      State('slider-framenums','value'),
@@ -489,7 +490,7 @@ def compute_sequence(fnames,framerange,confidence,selObjectNames,
 
 
 @app.callback(Output('sequence-output','url'),
-              [Input('signal','children')],
+              [Input('signal-sequence','children')],
               [State('sequence-output','url')])
 def serve_sequence_video(signal,currurl):
     if currurl is None: 
@@ -521,6 +522,35 @@ def serve_sequence_video(signal,currurl):
 #    fname = os.path.basename(currurl)
 #    return send_from_directory(path,fname)
 #    #return "Null:None"
+
+
+# ***************
+# run_inpaint
+# ***************
+# Produce inpainting results 
+
+@app.callback(
+     Output('signal-inpaint','children'),
+    [Input('button-inpaint', 'n_clicks')]
+    )
+def run_inpaint(n_clicks):
+    if not n_clicks:
+        return "Null:None"
+
+    
+    assert testContainerWrite(inpaintObj=inpaint, 
+                              workDir="../data",
+                              hardFail=False) , "Errors connecting with write access in containers"
+
+    staticdir = os.path.join(os.getcwd(),"static")
+    vfile = 'inpaint_' + datetime.now().strftime("%Y%m%d_%H%M%S") + ".mp4"
+    performInpainting(detrObj=detr,
+                      inpaintObj=inpaint,
+                      workDir = "../data",
+                      outputVideo=os.path.join(staticdir,vfile))
+
+    return "inpaint:file"
+
 
 
 # ---------------------------------------------------------------------

@@ -1,10 +1,30 @@
 import os
 import sys
+import tempfile
+from threading import Thread
+from time import sleep
+from glob import glob
 
 libpath = "/home/appuser/scripts/" # to keep the dev repo in place, w/o linking
 sys.path.insert(1,libpath)
 import ObjectDetection.imutils as imu
 from ObjectDetection.detect import DetectSingle, TrackSequence, GroupSequence
+from ObjectDetection.inpaintRemote import InpaintRemote
+
+# ------------
+# helper functions
+
+class ThreadWithReturnValue(Thread):
+    def __init__(self, group=None, target=None, name=None,
+                 args=(), kwargs={}, Verbose=None):
+        Thread.__init__(self, group, target, name, args, kwargs)
+        self._return = None
+    def run(self):
+        if self._target is not None:
+            self._return = self._target(*self._args, **self._kwargs)
+    def join(self, *args):
+        Thread.join(self, *args)
+        return self._return
 
 
 # for output bounding box post-processing
@@ -40,40 +60,107 @@ def filter_boxes(scores, boxes, confidence=0.7, apply_nms=True, iou=0.5):
 def createNullVideo(filePath,message="No Images", heightWidth=(100,100)):
     return imu.createNullVideo(filePath=filePath, message=message, heightWidth=heightWidth)
 
+def testContainerWrite(inpaintObj, workDir=None, hardFail=True):
+    # workDir must be accessible from both containers
+    if workDir is None:
+        workDir = os.getcwd()
 
-# COCO classes
-#CLASSES = [
-#    'N/A', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus',
-#    'train', 'truck', 'boat', 'traffic light', 'fire hydrant', 'N/A',
-#    'stop sign', 'parking meter', 'bench', 'bird', 'cat', 'dog', 'horse',
-#    'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'N/A', 'backpack',
-#    'umbrella', 'N/A', 'N/A', 'handbag', 'tie', 'suitcase', 'frisbee', 'skis',
-#    'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
-#    'skateboard', 'surfboard', 'tennis racket', 'bottle', 'N/A', 'wine glass',
-#    'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich',
-#    'orange', 'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake',
-#    'chair', 'couch', 'potted plant', 'bed', 'N/A', 'dining table', 'N/A',
-#    'N/A', 'toilet', 'N/A', 'tv', 'laptop', 'mouse', 'remote', 'keyboard',
-#    'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'N/A',
-#    'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
-#    'toothbrush'
-#]
+    workDir = os.path.abspath(workDir)
+
+    hasErrors = False
+
+    # access from detect container
+    if not os.access(workDir,os.W_OK):
+        msg = f"Do not have write access to 'detect' container:{workDir}"
+        if hardFail: 
+            raise Exception(msg)
+        else:
+            hasErrors = True
+            print(msg)
+
+    # access from inpaint container
+    inpaintObj.connectInpaint()
+    results = inpaintObj.executeCommandsInpaint(
+        commands=[f'if [ -w "{workDir}" ]; then echo "OK"; else echo "FAIL"; fi']
+    )
+    inpaintObj.disconnectInpaint()
+
+    res = [ l.strip() for l in results['stdout'][0]]
+
+    if "FAIL" in res:
+        msg = f"Do not have write access to 'inpaint' container:{workdir}" + \
+        ",".join([l for l in results['stderr'][0]])
+        if hardFail:
+            raise Exception(msg)
+        else:
+            hasErrors = True
+            print(msg)
+
+    return not hasErrors 
 
 
-# Load model
+def performInpainting(detrObj,inpaintObj,workDir,outputVideo, useFFMPEGdirect=False):
+
+    # perform inpainting
+    # (write access tested previously)
+    workDir = os.path.abspath(workDir)
+
+    with tempfile.TemporaryDirectory(dir=workDir) as tempdir:
+
+        frameDirPath =os.path.join(tempdir,"frames")
+        maskDirPath = os.path.join(tempdir,"masks")
+        resultDirPath = os.path.join(os.path.join(tempdir,"Inpaint_Res"),"inpaint_res")
+
+        if detrObj.combinedMaskList is None:
+            detrObj.combine_MaskSequence()
+
+        detrObj.write_ImageMaskSequence(
+            writeImagesToDirectory=frameDirPath,
+            writeMasksToDirectory=maskDirPath)
+
+        inpaintObj.connectInpaint()
+
+        trd1 = ThreadWithReturnValue(target=inpaintObj.runInpaint,
+                                 kwargs={'frameDirPath':frameDirPath,'maskDirPath':maskDirPath})
+        trd1.start() 
+
+        print("working:",end='',flush=True)
+        while trd1.is_alive():
+            print('.',end='',flush=True)
+            sleep(1)
+
+        print("\nfinished")
+        inpaintObj.disconnectInpaint()
+
+        stdin,stdout,stderr = trd1.join()
+        ok = False
+        for l in stdout:
+            print(l.strip())
+            if "Propagation has been finished" in l: 
+                ok = True
+        
+        assert ok, "Could not determine if results were valid!"
+        
+        print(f"\n....Writing results to {outputVideo}")
+
+        resultfiles = sorted(glob(os.path.join(resultDirPath,"*.png")))
+        imgres = [ cv2.imread(f) for f in resultfiles]
+        imu.writeFramesToVideo(imgres, filePath=outputVideo, fps=30)
+
+        return True
+
+
+# ***************************
+# Model import
+# ***************************
+
+# Load detection model
 detr = GroupSequence() 
-#detr = DetectSingle() 
 CLASSES = detr.thing_classes
 DEVICE = detr.DEVICE 
-#detr = torch.hub.load('facebookresearch/detr', 'detr_resnet50', pretrained=True)
-#detr.eval().to(DEVICE)
 
-# standard PyTorch mean-std input image normalization
-#transform = T.Compose([
-#    T.Resize(500),
-#    T.ToTensor(),
-#    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-#])
+# load Inpaint remote
+inpaint = InpaintRemote()
 
 
 # The following are imported in app: 
