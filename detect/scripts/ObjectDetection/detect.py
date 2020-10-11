@@ -740,7 +740,8 @@ class GroupSequence(TrackSequence):
                 MPEGconfig = self.MPEGconfig
 
             if useFFMPEGdirect:
-                imu.writeFramesToVideo(outims,filePath=MPEGfile, fps=interval,fourccstr=useFOURCCstr)
+                imu.writeFramesToVideo(outims,filePath=MPEGfile, fps=interval,
+                                       fourccstr=useFOURCCstr,useFFMPEGdirect=True)
             else:
                 mpegWriter = animation.writers['ffmpeg']
                 writer = mpegWriter(**MPEGconfig)

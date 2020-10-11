@@ -2,6 +2,7 @@
 
 import os
 from glob import glob
+import subprocess as sp
 
 # import some common libraries
 import cv2
@@ -314,7 +315,8 @@ def writeMasksToDirectory(maskList,dirPath,minPadLength=None,imgtype='png',clean
     return n_frames
 
 
-def writeFramesToVideo(imageList,filePath,fps=30,fourccstr=None):
+def writeFramesToVideo(imageList,filePath,fps=30,
+                       fourccstr=None, useFFMPEGdirect=False):
     """
         Writes given set of frames to video file (platform specific coding)
         format is 'mp4' or 'avi'
@@ -331,24 +333,67 @@ def writeFramesToVideo(imageList,filePath,fps=30,fourccstr=None):
             if not os.path.isdir(path):
                 os.mkdir(path)
 
-    if filePath.endswith(".mp4"):
-        if fourccstr is None:
-            fourccstr = 'mp4v' 
-        fourcc = cv2.VideoWriter_fourcc(*fourccstr)
-    elif filePath.endswith(".avi"):
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    if useFFMPEGdirect: 
+        # use ffmpeg installed in container (assuming were in container)
+        # the ffmpeg, as compiled for Linux, contains the H264 codec 
+        # as available in the libx264 library
+        assert filePath.endswith(".mp4"), "Cannot use non-mp4 formats with ffmpeg"
+
+        # assume image list is from OpenCV read.  Thus reverse the channels for the correct colors
+        clip = [ im[:, :, ::-1] for im in imageList]
+        h,w = clip[0].shape[:2] 
+
+        clippack = np.stack(clip)
+        out,err = __ffmpegDirect(clippack,outputfile=filePath,fps=fps, size=[h,w])
+        assert os.path.exists(filePath), print(err) 
+
     else:
-        assert False, f"Could not determine the video output type from {filePath}"
+        # use openCV method
+        # this works, but native 'mp4v' codec is not compatible
+        # with html.Video().  H264 codec is not availabe with OpenCV 
+        # unless you compile it from source (GPL issues)
+        if filePath.endswith(".mp4"):
+            if fourccstr is None:
+                fourccstr = 'mp4v' 
+            fourcc = cv2.VideoWriter_fourcc(*fourccstr)
+        elif filePath.endswith(".avi"):
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        else:
+            assert False, f"Could not determine the video output type from {filePath}"
         
-    outvid = cv2.VideoWriter(filePath, fourcc, fps, (width,height) )
+        outvid = cv2.VideoWriter(filePath, fourcc, fps, (width,height) )
 
-    # write out frames to video
-    for im in imageList:
-        outvid.write(im)
+        # write out frames to video
+        for im in imageList:
+            outvid.write(im)
 
-    outvid.release()
+        outvid.release()
 
     return len(imageList)
+
+
+def __ffmpegDirect(clip, outputfile, fps, size=[256, 256]):
+
+    vf = clip.shape[0]
+    command = ['ffmpeg',
+               '-y',  # overwrite output file if it exists
+               '-f', 'rawvideo',
+               '-s', '%dx%d' % (size[1], size[0]),  # '256x256', # size of one frame
+               '-pix_fmt', 'rgb24',
+               '-r', '25',  # frames per second
+               '-an',  # Tells FFMPEG not to expect any audio
+               '-i', '-',  # The input comes from a pipe
+               '-vcodec', 'libx264',
+               '-b:v', '1500k',
+               '-vframes', str(vf),  # 5*25
+               '-s', '%dx%d' % (size[1], size[0]),  # '256x256', # size of one frame
+               outputfile]
+
+    pipe = sp.Popen(command, stdin=sp.PIPE, stderr=sp.PIPE)
+    out, err = pipe.communicate(clip.tostring())
+    pipe.wait()
+    pipe.terminate()
+    return out,err
 
 
 def createNullVideo(filePath,message="No Image",heightWidth=(100,100)):

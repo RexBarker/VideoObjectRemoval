@@ -290,7 +290,7 @@ app.layout = html.Div(className='container', children=[
     ]),
     html.P("Inpainting Output"),
     html.Div([ dash_player.DashPlayer(
-        id='inpainting-output',
+        id='inpaint-output',
         url='static/result.mp4',
         controls=True,
         style={"height": "70vh"}) ]),
@@ -409,7 +409,7 @@ def run_single(n_clicks, dirpath, framerange, confidence):
 # ***************
 # Produce sequence prediction with grouping  
 @app.callback(
-    [Output('loading-sequence', 'value'),
+    [Output('loading-sequence', 'children'),
      Output('signal-sequence','children')],
     [Input('button-sequence', 'n_clicks')],
     [State('input-dirpath', 'value'),
@@ -485,7 +485,7 @@ def compute_sequence(fnames,framerange,confidence,selObjectNames,
                                 figsize=(20,15),
                                 interval=30,
                                 MPEGfile=os.path.join(staticdir,vfile),
-                                useFFMPEGdirect=False)
+                                useFFMPEGdirect=True)
     return vfile 
 
 
@@ -530,13 +530,13 @@ def serve_sequence_video(signal,currurl):
 # Produce inpainting results 
 
 @app.callback(
-     Output('signal-inpaint','children'),
+    [Output('loading-inpaint', 'children'),
+     Output('signal-inpaint','children')],
     [Input('button-inpaint', 'n_clicks')]
     )
 def run_inpaint(n_clicks):
     if not n_clicks:
-        return "Null:None"
-
+        return "", "Null:None"
     
     assert testContainerWrite(inpaintObj=inpaint, 
                               workDir="../data",
@@ -549,8 +549,30 @@ def run_inpaint(n_clicks):
                       workDir = "../data",
                       outputVideo=os.path.join(staticdir,vfile))
 
-    return "inpaint:file"
+    return "", f"inpaintvid:{vfile}"
 
+
+@app.callback(Output('inpaint-output','url'),
+              [Input('signal-inpaint','children')],
+              [State('inpaint-output','url')])
+def serve_inpaint_video(signal,currurl):
+    if currurl is None: 
+        return 'static/result.mp4'
+    else:
+        sigtype,vfile = signal.split(":")
+        if vfile is not None and \
+           isinstance(vfile,str) and \
+           sigtype == 'inpaintvid' and \
+           os.path.exists(f"./static/{vfile}"):
+
+            # remove old file
+            if os.path.exists(currurl):
+                os.remove(currurl)
+
+            # serve new file
+            return f"static/{vfile}"
+        else:
+            return currurl 
 
 
 # ---------------------------------------------------------------------

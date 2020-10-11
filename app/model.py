@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+import cv2
 from threading import Thread
 from time import sleep
 from glob import glob
@@ -145,7 +146,7 @@ def performInpainting(detrObj,inpaintObj,workDir,outputVideo, useFFMPEGdirect=Fa
 
         resultfiles = sorted(glob(os.path.join(resultDirPath,"*.png")))
         imgres = [ cv2.imread(f) for f in resultfiles]
-        imu.writeFramesToVideo(imgres, filePath=outputVideo, fps=30)
+        imu.writeFramesToVideo(imgres, filePath=outputVideo, fps=30, useFFMPEGdirect=True)
 
         return True
 
