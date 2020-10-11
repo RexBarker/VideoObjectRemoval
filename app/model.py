@@ -29,17 +29,17 @@ class ThreadWithReturnValue(Thread):
 
 
 # for output bounding box post-processing
-def box_cxcywh_to_xyxy(x):
-    x_c, y_c, w, h = x.unbind(1)
-    b = [(x_c - 0.5 * w), (y_c - 0.5 * h),
-         (x_c + 0.5 * w), (y_c + 0.5 * h)]
-    return torch.stack(b, dim=1)
+#def box_cxcywh_to_xyxy(x):
+#    x_c, y_c, w, h = x.unbind(1)
+#    b = [(x_c - 0.5 * w), (y_c - 0.5 * h),
+#         (x_c + 0.5 * w), (y_c + 0.5 * h)]
+#    return torch.stack(b, dim=1)
 
-def rescale_bboxes(out_bbox, size):
-    img_w, img_h = size
-    b = box_cxcywh_to_xyxy(out_bbox)
-    b = b * torch.tensor([img_w, img_h, img_w, img_h], dtype=torch.float32)
-    return b
+#def rescale_bboxes(out_bbox, size):
+#    img_w, img_h = size
+#    b = box_cxcywh_to_xyxy(out_bbox)
+#    b = b * torch.tensor([img_w, img_h, img_w, img_h], dtype=torch.float32)
+#    return b
 
 
 def detect_scores_bboxes_classes(im,model):
@@ -47,16 +47,16 @@ def detect_scores_bboxes_classes(im,model):
     return detr.scores, detr.bboxes, detr.selClassList 
 
 
-def filter_boxes(scores, boxes, confidence=0.7, apply_nms=True, iou=0.5):
-    keep = scores.max(-1).values > confidence
-    scores, boxes = scores[keep], boxes[keep]
-
-    if apply_nms:
-        top_scores, labels = scores.max(-1)
-        keep = batched_nms(boxes, top_scores, labels, iou)
-        scores, boxes = scores[keep], boxes[keep]
-
-    return scores, boxes
+#def filter_boxes(scores, boxes, confidence=0.7, apply_nms=True, iou=0.5):
+#    keep = scores.max(-1).values > confidence
+#    scores, boxes = scores[keep], boxes[keep]
+#
+#    if apply_nms:
+#        top_scores, labels = scores.max(-1)
+#        keep = batched_nms(boxes, top_scores, labels, iou)
+#        scores, boxes = scores[keep], boxes[keep]
+#
+#    return scores, boxes
 
 def createNullVideo(filePath,message="No Images", heightWidth=(100,100)):
     return imu.createNullVideo(filePath=filePath, message=message, heightWidth=heightWidth)

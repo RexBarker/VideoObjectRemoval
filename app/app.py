@@ -19,7 +19,7 @@ import plotly.graph_objects as go
 from PIL import Image
 
 from model import detect_scores_bboxes_classes, \
-                  filter_boxes, detr, createNullVideo
+                  detr, createNullVideo
 from model import CLASSES, DEVICE 
 from model import inpaint, testContainerWrite, performInpainting
 
@@ -112,6 +112,27 @@ def add_bbox(fig, x0, y0, x1, y1,
         legendgroup=group,
         showlegend=showlegend,
     ))
+
+
+def get_selected_objects(figure):
+    # recovers the selected items from the figure
+    # returns a dict of selected indexed items
+    data = figure['data']
+
+    obsObjects = {}
+    for d in data:
+        objInst = d.get('legendgroup')
+        wasVisible = False if d.get('visible') and d['visible'] == 'legendonly' else True
+        if objInst is not None and ":" in objInst and wasVisible:
+
+            classname,inst = objInst.split(":")
+            if obsObjects.get(classname,None) is None:
+                obsObjects[classname] = [int(inst)]
+            else:
+                obsObjects[classname].append(int(inst))
+    
+    return obsObjects
+
 
 # colors for visualization
 COLORS = ['#fe938c','#86e7b8','#f9ebe0','#208aae','#fe4a49', 
@@ -385,10 +406,17 @@ def run_single(n_clicks, dirpath, framerange, confidence):
 
     fig = pil_to_fig(im, showlegend=True, title=f'DETR Predictions ({tend-tstart:.2f}s)')
     existing_classes = set()
+    seenClassIndex = {}
 
     for confidence,bbx,class_id in zip(scores,boxes,selClasses):
         x0, y0, x1, y1 = bbx 
-        label = CLASSES[class_id]
+        classname = CLASSES[class_id]
+        if seenClassIndex.get(classname,None) is not None:
+            seenClassIndex[classname] += 1
+        else:
+            seenClassIndex[classname] = 0
+
+        label = classname + ":" + str(seenClassIndex[classname])
 
         # only display legend when it's not in the existing classes
         showlegend = label not in existing_classes
@@ -404,6 +432,7 @@ def run_single(n_clicks, dirpath, framerange, confidence):
 
     return fig, 
 
+
 # ***************
 # run_sequence
 # ***************
@@ -415,6 +444,7 @@ def run_single(n_clicks, dirpath, framerange, confidence):
     [State('input-dirpath', 'value'),
      State('slider-framenums','value'),
      State('slider-confidence', 'value'),
+     State('model-output','figure'),
      State('cb-person','value'),
      State('cb-vehicle','value'),
      State('cb-environment','value'),
@@ -422,7 +452,7 @@ def run_single(n_clicks, dirpath, framerange, confidence):
      State('input-dilationhwidth','value'),
      State('input-minseqlength','value')]
 )
-def run_sequence(n_clicks, dirpath, framerange, confidence,
+def run_sequence(n_clicks, dirpath, framerange, confidence,figure,
                  cb_person, cb_vehicle, cb_environment, 
                  cb_options, dilationhwidth, minsequencelength):
 
@@ -430,6 +460,8 @@ def run_sequence(n_clicks, dirpath, framerange, confidence,
         fnames = getImageFileNames(dirpath)
     else: 
         return "", "Null:None" 
+    
+    obsObjects = get_selected_objects(figure)
 
     selectObjects = [ *cb_person, *cb_vehicle, *cb_environment]
     useBBmasks = 'useBBmasks' in cb_options
