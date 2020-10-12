@@ -1,4 +1,5 @@
 import os
+import sys
 import base64
 from glob import glob
 from io import BytesIO
@@ -22,6 +23,11 @@ from model import detect_scores_bboxes_classes, \
                   detr, createNullVideo
 from model import CLASSES, DEVICE 
 from model import inpaint, testContainerWrite, performInpainting
+
+libpath = "/home/appuser/scripts/" # to keep the dev repo in place, w/o linking
+sys.path.insert(1,libpath)
+import ObjectDetection.imutils as imu
+
 
 basedir = '/home/appuser/app'
 print(f"ObjectDetect loaded, using DEVICE={DEVICE}")
@@ -113,19 +119,41 @@ def add_bbox(fig, x0, y0, x1, y1,
         showlegend=showlegend,
     ))
 
+def get_index_by_bbox(objGroupingDict,class_name,bbox_in):
+    # gets the order of the object within the groupingSequence 
+    # by bounding box overlap
+    maxIoU = 0.0
+    maxIdx = 0
+    for instIdx, objInst in enumerate(objGroupingDict[class_name]):
+        # only search for object found in seq_i= 0
+        # there must exist objects at seq_i=0 since we predicted them on first frame
+        bbx,_,seq_i = objInst[0] 
 
-def get_selected_objects(figure):
+        if seq_i != 0: continue
+        IoU = imu.bboxIoU(bbx, bbox_in)
+        if IoU > maxIoU:
+            maxIoU = IoU
+            maxIdx = instIdx 
+    
+    return maxIdx
+
+
+def get_selected_objects(figure,objGroupingDict):
     # recovers the selected items from the figure
+    # infer the object location by the bbox IoU (more stable than order)
     # returns a dict of selected indexed items
-    data = figure['data']
 
     obsObjects = {}
-    for d in data:
+    for d in figure['data']:
         objInst = d.get('legendgroup')
         wasVisible = False if d.get('visible') and d['visible'] == 'legendonly' else True
         if objInst is not None and ":" in objInst and wasVisible:
 
-            classname,inst = objInst.split(":")
+            classname = objInst.split(":")[0]
+            x = d['x']
+            y = d['y']
+            bbox = [x[0], y[0], x[2], y[2]]
+            inst = get_index_by_bbox(objGroupingDict,classname,bbox)
             if obsObjects.get(classname,None) is None:
                 obsObjects[classname] = [int(inst)]
             else:
@@ -386,10 +414,15 @@ def update_dirpath(nc_single, nc_sequence, nc_inpaint, s_dirpath, s_fnmax, s_fnm
     [Input('button-single', 'n_clicks')],
     [State('input-dirpath', 'value'),
      State('slider-framenums','value'),
-     State('slider-confidence', 'value')
+     State('slider-confidence', 'value'),
+     State('cb-person','value'),
+     State('cb-vehicle','value'),
+     State('cb-environment','value')
      ],
 )
-def run_single(n_clicks, dirpath, framerange, confidence):
+def run_single(n_clicks, dirpath, framerange, confidence,
+               cb_person, cb_vehicle, cb_environment):
+
     if dirpath is not None and os.path.isdir(dirpath):
         fnames = getImageFileNames(dirpath)
         imgfile = fnames[framerange[0]]
@@ -400,35 +433,48 @@ def run_single(n_clicks, dirpath, framerange, confidence):
         fig = pil_to_fig(im, showlegend=True, title='No Image')
         return fig,
 
+    theseObjects = [ *cb_person, *cb_vehicle, *cb_environment]
+    wasConfidence = detr.cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST
+
+    if sorted(theseObjects) != sorted(detr.selObjNames) or \
+       abs(confidence - wasConfidence) > 0.00001:
+        detr.__init__(selectObjectNames=theseObjects, score_threshold=confidence)
+
     tstart = time.time()
     scores, boxes, selClasses = detect_scores_bboxes_classes(imgfile, detr)
     tend = time.time()
 
     fig = pil_to_fig(im, showlegend=True, title=f'DETR Predictions ({tend-tstart:.2f}s)')
-    existing_classes = set()
-    seenClassIndex = {}
 
-    for confidence,bbx,class_id in zip(scores,boxes,selClasses):
-        x0, y0, x1, y1 = bbx 
+    seenClassIndex = {}
+    insertOrder = []
+    for i,class_id in enumerate(selClasses):
         classname = CLASSES[class_id]
+
         if seenClassIndex.get(classname,None) is not None:
             seenClassIndex[classname] += 1
         else:
             seenClassIndex[classname] = 0
 
-        label = classname + ":" + str(seenClassIndex[classname])
+        insertOrder.append([classname + ":" + str(seenClassIndex[classname]),i])
+         
+    insertOrder = sorted(insertOrder, \
+                         key=lambda x: (x[0].split(":")[0], int(x[0].split(":")[1])))
+
+    for label,i in insertOrder:
+
+        confidence = scores[i]
+        x0, y0, x1, y1 = boxes[i]
+        class_id = selClasses[i]
 
         # only display legend when it's not in the existing classes
-        showlegend = label not in existing_classes
         text = f"class={label}<br>confidence={confidence:.3f}"
 
         add_bbox(
             fig, x0, y0, x1, y1,
             opacity=0.7, group=label, name=label, color=COLORS[class_id], 
-            showlegend=showlegend, text=text,
+            showlegend=True, text=text,
         )
-
-        existing_classes.add(label)
 
     return fig, 
 
@@ -461,8 +507,6 @@ def run_sequence(n_clicks, dirpath, framerange, confidence,figure,
     else: 
         return "", "Null:None" 
     
-    obsObjects = get_selected_objects(figure)
-
     selectObjects = [ *cb_person, *cb_vehicle, *cb_environment]
     useBBmasks = 'useBBmasks' in cb_options
     fillSequence = 'fillSequence' in cb_options
@@ -475,9 +519,10 @@ def run_sequence(n_clicks, dirpath, framerange, confidence,figure,
         if fnames == detr.selectFiles:
             return "", "Null:None" 
 
-    detr.__init__(score_threshold=confidence)
+    detr.__init__(score_threshold=confidence,selectObjectNames=selectObjects)
 
-    vfile = compute_sequence(fnames,framerange,confidence,selectObjects,
+    vfile = compute_sequence(fnames,framerange,confidence,
+                             figure, selectObjects,
                              useBBmasks, fillSequence, 
                              dilationhwidth, minsequencelength)    
 
@@ -485,23 +530,26 @@ def run_sequence(n_clicks, dirpath, framerange, confidence,figure,
 
 
 @cache.memoize()
-def compute_sequence(fnames,framerange,confidence,selObjectNames,
+def compute_sequence(fnames,framerange,confidence,
+                     figure,selectObjectNames,
                      useBBmasks,fillSequence,
                      dilationhwidth, minsequencelength):
     detr.selectFiles = fnames
 
     staticdir = os.path.join(os.getcwd(),"static")
     detr.load_images(filelist=fnames)
-    detr.predict_sequence(useBBmasks=useBBmasks,selObjectNames=selObjectNames)
+    detr.predict_sequence(useBBmasks=useBBmasks,selObjectNames=selectObjectNames)
     detr.groupObjBBMaskSequence()
 
+    obsObjectsDict = get_selected_objects(figure=figure,objGroupingDict=detr.objBBMaskSeqGrpDict)
+
     # filtered by object class, instance, and length 
-    if minsequencelength > 0: 
-        detr.filter_ObjBBMaskSeq(minCount=minsequencelength)
+    detr.filter_ObjBBMaskSeq(allowObjNameInstances= obsObjectsDict,
+                             minCount=minsequencelength)
 
     # fill sequence 
     if fillSequence:
-        detr.fill_ObjBBMaskSequence()
+        detr.fill_ObjBBMaskSequence(specificObjectNameInstances=obsObjectsDict)
 
     # use dilation
     if dilationhwidth > 0:
