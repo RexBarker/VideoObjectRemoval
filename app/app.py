@@ -181,6 +181,7 @@ cache.init_app(server,config=CACHE_CONFIG)
 app.layout = html.Div(className='container', children=[
     Row(html.H1("Video Object Removal App")),
 
+    # Input
     Row(html.P("Input Directory Path:")),
     Row([
         Column(width=6, children=[
@@ -189,16 +190,11 @@ app.layout = html.Div(className='container', children=[
         Column(width=2,children=[
             html.Button("Run Single", id='button-single', n_clicks=0)
         ]),
-        #Column(width=2,children=[
-        #    html.Button("Run Sequence", id='button-sequence', n_clicks=0)
-        #]),
-        #Column(width=2,children=[
-        #    html.Button("Run Inpaint", id='button-inpaint', n_clicks=0)
-        #])
     ]),
 
     html.Hr(),
 
+    # frame number selection
     Row([ 
          Column(width=2, children=[ html.P('Frame range:')]),
          Column(width=10, children=[ 
@@ -218,13 +214,7 @@ app.layout = html.Div(className='container', children=[
             dcc.Slider(
                 id='slider-confidence', min=0, max=1, step=0.05, value=0.7, 
                 marks={0: '0', 1: '1'})
-        ])
-    ]),
-
-    Row(dcc.Graph(id='model-output', style={"height": "70vh"})),
-
-    html.Hr(),
-    Row([
+        ]),
         Column(width=7, children=[
             html.P('Object selection:'),
             Row([
@@ -236,7 +226,8 @@ app.layout = html.Div(className='container', children=[
                              {'label': ' backpack', 'value': 'backpack'},
                              {'label': ' suitcase', 'value': 'suitcase'},
                             ],
-                    value = ['person', 'handbag','backpack','suitcase'])),
+                    value = ['person', 'handbag','backpack','suitcase'])
+                ),
                 Column(width=3, children=dcc.Checklist(
                     id='cb-vehicle', 
                     options=[
@@ -244,7 +235,8 @@ app.layout = html.Div(className='container', children=[
                              {'label': ' truck', 'value': 'truck'},
                              {'label': ' bus', 'value': 'bus'},
                             ],
-                    value = ['car', 'truck'])),
+                    value = ['car', 'truck'])
+                ),
                 Column(width=3, children=dcc.Checklist(
                     id='cb-environment', 
                     options=[
@@ -252,11 +244,18 @@ app.layout = html.Div(className='container', children=[
                              {'label': ' stop sign', 'value': 'stop sign'},
                              {'label': ' bench', 'value': 'bench'},
                             ],
-                    value = []))
+                    value = [])
+                )
             ])
         ]),
+    ]),
 
-        html.Hr(),
+    # prediction output graph
+    Row(dcc.Graph(id='model-output', style={"height": "70vh"})),
+
+    # processing options
+    html.Hr(),
+    Row([
         Column(width=7, children=[
             html.P('Processing options:'),
             Row([
