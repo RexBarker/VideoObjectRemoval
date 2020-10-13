@@ -3,6 +3,7 @@
 
 # general files
 app/static/**
+app/upload/**
 app/_cache/**
 data/**
 *.ipynb
@@ -11,4 +12,6 @@ data/**
 # detectron2 files
 
 # inpainting files
-inpaint/pretrained_models/**
+inpaint/pretrained_models/*.pth
+inpaint/pretrained_models/*.tar
+inpaint/pretrained_models/DAVIS_model/**
