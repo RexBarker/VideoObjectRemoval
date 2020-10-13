@@ -257,6 +257,41 @@ def dilateErodeMask(mask, actionList=['dilate'], kernelShape='rect', maskHalfWid
     return maskout
 
 
+def videofileToFramesDirectory(videofile,dirPath,padlength=5,imgtype='png',cleanDirectory=True):
+    """
+        writes a video file (.mp4, .avi, or .mov) to frames directory
+        Here, it is understood that images are an np.array, dtype='uint8' 
+        of shape (w,h,3)
+    """
+    assert imgtype in ('png', 'jpg'), f"Invalid image type '{imgtype}' given"
+
+    if not os.path.isdir(dirPath):
+        path = '/' if dirPath.startswith("/") else ''
+        for d in dirPath.split('/'):
+            if not d: continue
+            path += d + '/'
+            if not os.path.isdir(path):
+                os.mkdir(path)
+    elif cleanDirectory:
+        for f in glob(os.path.join(dirPath,"*." + imgtype)):
+            os.remove(f) # danger Will Robinson
+
+    cap = cv2.VideoCapture(videofile)
+    n = 0
+    while True:
+        ret,frame = cap.read()
+
+        if not ret:
+            cap.release()
+            break
+        fname = str(n).rjust(padlength,'0') + '.' + imgtype
+        cv2.imwrite(os.path.join(dirPath,fname),frame)
+
+        n += 1
+
+    return n
+
+
 def writeImagesToDirectory(imageList,dirPath,minPadLength=None,imgtype='png',cleanDirectory=False):
     """
         writes flat list of image arrays to directory

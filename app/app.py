@@ -2,6 +2,7 @@ import os
 import sys
 import base64
 from glob import glob
+from shutil import rmtree
 from io import BytesIO
 import time
 from datetime import datetime
@@ -29,9 +30,27 @@ sys.path.insert(1,libpath)
 import ObjectDetection.imutils as imu
 
 
-basedir = '/home/appuser/app'
+basedir = os.getcwd() 
+uploaddir = os.path.join(basedir,"upload")
 print(f"ObjectDetect loaded, using DEVICE={DEVICE}")
 print(f"Basedirectory: {basedir}")
+
+# cleaup old uploads
+if os.path.exists(uploaddir):
+    rmtree(uploaddir)    
+
+os.mkdir(uploaddir)
+
+# cleanup old runs
+for f in [*glob(os.path.join(basedir,'static/sequence_*.mp4')),
+          *glob(os.path.join(basedir,'static/inpaint_*.mp4'))]:
+    os.remove(f)
+
+# remove and create dummy video for place holder
+tempfile = os.path.join(basedir,'static/result.mp4')
+if not os.path.exists(tempfile):
+    createNullVideo(tempfile)
+
 
 # ----------
 # Helper functions 
@@ -66,6 +85,24 @@ def Column(children=None, width=1, **kwargs):
 # ----------
 # plotly.py helper functions
 
+# upload files
+def save_file(name, content):
+    """Decode and store a file uploaded with Plotly Dash."""
+    filepath = os.path.join(uploaddir, name)
+    data = content.encode("utf8").split(b";base64,")[1]
+    with open(filepath, "wb") as fp:
+        fp.write(base64.decodebytes(data))
+    
+    return filepath
+
+def vfile_to_frames(fname):
+    assert os.path.exists(fname), "Could not determine path to video file"
+    dirPath = os.path.join(uploaddir,fname.split(".")[-2])
+    nfiles = imu.videofileToFramesDirectory(videofile=fname,dirPath=dirPath,
+                                            padlength=5, imgtype='png', cleanDirectory=True)
+    return dirPath 
+
+# PIL images
 def pil_to_b64(im, enc="png"):
     io_buf = BytesIO()
     im.save(io_buf, format=enc)
@@ -100,7 +137,7 @@ def pil_to_fig(im, showlegend=False, title=None):
 
     return fig
 
-
+# graph 
 def add_bbox(fig, x0, y0, x1, y1, 
              showlegend=True, name=None, color=None, 
              opacity=0.5, group=None, text=None):
@@ -185,9 +222,31 @@ app.layout = html.Div(className='container', children=[
     Row(html.P("Input Directory Path:")),
     Row([
         Column(width=6, children=[
-            dcc.Input(id='input-dirpath', style={'width': '100%'}, placeholder='Insert dirpath...'),
+            dcc.Upload(
+                id="upload-file",
+                children=html.Div(
+                    ["Drag and drop or click to select a file to upload."]
+                ),
+                style={
+                    "width": "100%",
+                    "height": "60px",
+                    "lineHeight": "60px",
+                    "borderWidth": "1px",
+                    "borderStyle": "dashed",
+                    "borderRadius": "5px",
+                    "textAlign": "center",
+                    "margin": "10px",
+                },
+                multiple=False,
+            )
         ]),
-        Column(width=2,children=[
+    ]),
+ 
+    Row([
+        Column(width=6, children=[
+            html.H3('Upload file',id='input-dirpath-display', style={'width': '100%'})
+        ]),
+       Column(width=2,children=[
             html.Button("Run Single", id='button-single', n_clicks=0)
         ]),
     ]),
@@ -346,12 +405,28 @@ app.layout = html.Div(className='container', children=[
     # hidden signal value
     html.Div(id='signal-sequence', style={'display': 'none'}),
     html.Div(id='signal-inpaint', style={'display': 'none'}),
+    html.Div(id='input-dirpath', style={'display': 'none'}),
 
 ])
 
 
 # ----------
 # callbacks 
+
+# upload file
+@app.callback(
+    Output("input-dirpath", "children"),
+    [Input("upload-file", "filename"), Input("upload-file", "contents")],
+)
+def update_output(uploaded_filename, uploaded_file_content):
+    # Save uploaded files and regenerate the file list.
+
+    if uploaded_filename is not None and uploaded_file_content is not None and \
+       uploaded_filename.split(".")[-1] in ('mp4', 'mov', 'avi') :
+        dirPath = vfile_to_frames(save_file(uploaded_filename, uploaded_file_content))
+        return dirPath
+    else:
+        return "(none)"
 
 # update_framenum_minmax()
 # purpose:  to update min/max boxes of the slider 
@@ -375,18 +450,22 @@ def update_framenum_minmax(framenumrange):
     [Output('slider-framenums','max'),
      Output('slider-framenums','marks'),
      Output('slider-framenums','value'),
-     Output('input-dirpath','value')    ],
+     Output('input-dirpath-display','children')],
     [Input('button-single','n_clicks'),
      Input('button-sequence','n_clicks'),
-     Input('button-inpaint', 'n_clicks')],
-    [State('input-dirpath', 'value'),
+     Input('button-inpaint', 'n_clicks'),
+     Input('input-dirpath', 'children')],
+    [State('upload-file', 'filename'),
      State('slider-framenums','max'),
      State('slider-framenums','marks'),
      State('slider-framenums','value')  ]
 )
-def update_dirpath(nc_single, nc_sequence, nc_inpaint, s_dirpath, s_fnmax, s_fnmarks, s_fnvalue):
-    if s_dirpath is None:
-        s_dirpath = "/home/appuser/data/Colomar/frames"  #temporary fix
+def update_dirpath(nc_single, nc_sequence, nc_inpaint, s_dirpath, 
+                   vfilename, s_fnmax, s_fnmarks, s_fnvalue):
+    if s_dirpath is None or s_dirpath == "(none)":
+        #s_dirpath = "/home/appuser/data/Colomar/frames"  #temporary fix
+        return 100, {'0':'0', '100':'100'}, [0,100], '(none)' 
+
     dirpath = s_dirpath
     fnames = getImageFileNames(s_dirpath)
     if fnames:
@@ -402,7 +481,7 @@ def update_dirpath(nc_single, nc_sequence, nc_inpaint, s_dirpath, s_fnmax, s_fnm
         fnmarks = s_fnmarks
         fnvalue = s_fnvalue
         
-    return fnmax, fnmarks, fnvalue, dirpath
+    return fnmax, fnmarks, fnvalue, vfilename 
 
 # ***************
 # * run_single
@@ -411,7 +490,7 @@ def update_dirpath(nc_single, nc_sequence, nc_inpaint, s_dirpath, s_fnmax, s_fnm
 @app.callback(
     [Output('model-output', 'figure')],
     [Input('button-single', 'n_clicks')],
-    [State('input-dirpath', 'value'),
+    [State('input-dirpath', 'children'),
      State('slider-framenums','value'),
      State('slider-confidence', 'value'),
      State('cb-person','value'),
@@ -486,7 +565,7 @@ def run_single(n_clicks, dirpath, framerange, confidence,
     [Output('loading-sequence', 'children'),
      Output('signal-sequence','children')],
     [Input('button-sequence', 'n_clicks')],
-    [State('input-dirpath', 'value'),
+    [State('input-dirpath', 'children'),
      State('slider-framenums','value'),
      State('slider-confidence', 'value'),
      State('model-output','figure'),
@@ -591,18 +670,6 @@ def serve_sequence_video(signal,currurl):
             return currurl 
 
 
-#@app.callback(Output('signal-download','children'),
-#              [Input('download-sequence','n_clicks')],
-#              [State('sequence-output', 'url')]
-#)
-#def download_video(n_clicks,currurl):
-#    root_dir = os.getcwd()
-#    path=os.path.join(root_dir,os.path.dirname(currurl))
-#    fname = os.path.basename(currurl)
-#    return send_from_directory(path,fname)
-#    #return "Null:None"
-
-
 # ***************
 # run_inpaint
 # ***************
@@ -656,10 +723,5 @@ def serve_inpaint_video(signal,currurl):
 
 # ---------------------------------------------------------------------
 if __name__ == '__main__':
-
-    # remove and create dummy video for place holder
-    tempfile = os.path.join(os.getcwd(),'static/result.mp4')
-    if not os.path.exists(tempfile):
-        createNullVideo(tempfile)
 
     app.run_server(debug=True,host='0.0.0.0',processes=1,threaded=True)
