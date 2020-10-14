@@ -54,7 +54,7 @@ EXPOSE 22
 
 
 # install Deep-Flow
-RUN git clone https://github.com/nbei/Deep-Flow-Guided-Video-Inpainting.git Deep-Flow 
+RUN git clone https://github.com/RexBarker/Deep-Flow.git Deep-Flow 
 
 # install scripts
 WORKDIR /home/appuser/Deep-Flow 
