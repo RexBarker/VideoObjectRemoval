@@ -42,9 +42,12 @@ if os.path.exists(uploaddir):
 os.mkdir(uploaddir)
 
 # cleanup old runs
-for f in [*glob(os.path.join(basedir,'static/sequence_*.mp4')),
-          *glob(os.path.join(basedir,'static/inpaint_*.mp4'))]:
-    os.remove(f)
+if os.path.exists(os.path.join(basedir,"static")):
+    for f in [*glob(os.path.join(basedir,'static/sequence_*.mp4')),
+              *glob(os.path.join(basedir,'static/inpaint_*.mp4'))]:
+        os.remove(f)
+else:
+    os.mkdir(os.path.join(basedir,"static"))
 
 # remove and create dummy video for place holder
 tempfile = os.path.join(basedir,'static/result.mp4')
