@@ -44,7 +44,8 @@ ARG TORCH_CUDA_ARCH_LIST="Kepler;Kepler+Tesla;Maxwell;Maxwell+Tegra;Pascal;Volta
 ENV TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST}"
 
 RUN pip install --user -e detectron2_repo
-RUN pip install --user jupyter scipy pandas scikit-learn ipykernel opencv-python paramiko dash dash-player dash-bootstrap-components flask_caching
+RUN pip install --user jupyter scipy pandas scikit-learn ipykernel opencv-python \
+                       paramiko dash dash-player dash-bootstrap-components flask_caching pytube
 
 # Set a fixed model cache directory.
 ENV FVCORE_CACHE="/tmp"
