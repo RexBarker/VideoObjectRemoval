@@ -89,7 +89,7 @@ def testContainerWrite(inpaintObj, workDir=None, hardFail=True):
     res = [ l.strip() for l in results['stdout'][0]]
 
     if "FAIL" in res:
-        msg = f"Do not have write access to 'inpaint' container:{workdir}" + \
+        msg = f"Do not have write access to 'inpaint' container:{workDir}" + \
         ",".join([l for l in results['stderr'][0]])
         if hardFail:
             raise Exception(msg)
