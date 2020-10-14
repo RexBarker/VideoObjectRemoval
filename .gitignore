@@ -1,11 +1,14 @@
-#
+# force explicit directory keeping
+data/**
+!data/.gitkeep
+
+# vscode
 **.vscode
 
 # general files
 app/static/**
 app/upload/**
 app/_cache/**
-data/**
 *.ipynb
 *.pyc
 
