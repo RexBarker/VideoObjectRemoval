@@ -295,9 +295,10 @@ app.layout = html.Div(className='container', children=[
                     options=[
                              {'label': ' car', 'value': 'car'},
                              {'label': ' truck', 'value': 'truck'},
+                             {'label': ' motorcycle', 'value': 'motorcycle'},
                              {'label': ' bus', 'value': 'bus'},
                             ],
-                    value = ['car', 'truck'])
+                    value = ['car', 'truck', 'motorcycle'])
                 ),
                 Column(width=3, children=dcc.Checklist(
                     id='cb-environment', 
@@ -324,8 +325,9 @@ app.layout = html.Div(className='container', children=[
                 Column(width=3, children=dcc.Checklist(
                     id='cb-options', 
                     options=[
-                             {'label': ' use BBmask', 'value': 'useBBmasks'},
+                             {'label': ' accept all', 'value': 'acceptall'},
                              {'label': ' fill sequence', 'value': 'fillSequence'},
+                             {'label': ' use BBmask', 'value': 'useBBmasks'},
                             ],
                     value=['fillSequence'])
                 ),
@@ -589,8 +591,9 @@ def run_sequence(n_clicks, dirpath, framerange, confidence,figure,
         return "", "Null:None" 
     
     selectObjects = [ *cb_person, *cb_vehicle, *cb_environment]
-    useBBmasks = 'useBBmasks' in cb_options
+    acceptall = 'acceptall' in cb_options
     fillSequence = 'fillSequence' in cb_options
+    useBBmasks = 'useBBmasks' in cb_options
     
     fmin, fmax = framerange
     fnames = fnames[fmin:fmax]
@@ -604,7 +607,7 @@ def run_sequence(n_clicks, dirpath, framerange, confidence,figure,
 
     vfile = compute_sequence(fnames,framerange,confidence,
                              figure, selectObjects,
-                             useBBmasks, fillSequence, 
+                             acceptall, fillSequence, useBBmasks, 
                              dilationhwidth, minsequencelength)    
 
     return "", f'sequencevid:{vfile}'
@@ -613,7 +616,7 @@ def run_sequence(n_clicks, dirpath, framerange, confidence,figure,
 @cache.memoize()
 def compute_sequence(fnames,framerange,confidence,
                      figure,selectObjectNames,
-                     useBBmasks,fillSequence,
+                     acceptall, fillSequence, useBBmasks, 
                      dilationhwidth, minsequencelength):
     detr.selectFiles = fnames
 
@@ -622,7 +625,9 @@ def compute_sequence(fnames,framerange,confidence,
     detr.predict_sequence(useBBmasks=useBBmasks,selObjectNames=selectObjectNames)
     detr.groupObjBBMaskSequence()
 
-    obsObjectsDict = get_selected_objects(figure=figure,objGroupingDict=detr.objBBMaskSeqGrpDict)
+    obsObjectsDict = get_selected_objects(figure=figure,
+                                          objGroupingDict=detr.objBBMaskSeqGrpDict) \
+                     if not acceptall else None
 
     # filtered by object class, instance, and length 
     detr.filter_ObjBBMaskSeq(allowObjNameInstances= obsObjectsDict,
