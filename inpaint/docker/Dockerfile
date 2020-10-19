@@ -36,9 +36,10 @@ terminaltables==3.1.0 \
 torch==0.4.0 \
 torchvision==0.2.1 \
 tqdm==4.32.1 \
-urllib3==1.25.3
+urllib3==1.25.3 \
+pytest-runner
 
-RUN pip3 --disable-pip-version-check install  mmcv==0.2.10
+RUN pip3 --no-dependencies --disable-pip-version-check install  mmcv==0.2.10
 
 # create a non-root user
 ARG USER_ID=1000
