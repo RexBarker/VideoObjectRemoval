@@ -6,6 +6,7 @@ data/**
 **.vscode
 
 # general files
+.DS_Store
 app/static/**
 app/upload/**
 app/_cache/**
