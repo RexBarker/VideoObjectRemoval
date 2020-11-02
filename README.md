@@ -26,12 +26,14 @@ The end result of this project is a video editing platform in the context of loc
 
 | Result | Description  |
 | ------ |:------------ |
-| <img src="assets/CCperson_org_seq_inp_vert.gif" style="width:50%"/>  | **Multiple object removal** <br> - pedestrians are removed using bounding-box shaped mask  <br> - elliptical dialation mask of 21 pixels used <br> <a href="https://www.youtube.com/watch?v=GUJq84gjvM4&t=398s">Source: YouTube video 15:16-15:17</a> |
+| <img src="assets/CCCar_org_seq_inp_vert.gif" style="width:50%"/>  | **Single object removal** <br> - A single vehichle is removed using a conforming mask <br> - elliptical dilation mask of 21 pixels used <br> <a href="https://www.youtube.com/watch?v=GUJq84gjvM4&t=398s">Source: YouTube video 15:16-15:17</a>|    
 
 ---
 
 | Result | Description  |
 | ------ |:------------ |
-| <img src="assets/CCCar_org_seq_inp_vert.gif" style="width:50%"/>  | **Single object removal** <br> - A single vehichle is removed using a conforming mask <br> - elliptical dialation mask of 21 pixels used <br> <a href="https://www.youtube.com/watch?v=GUJq84gjvM4&t=398s">Source: YouTube video 15:26-15:27</a>|    
+| <img src="assets/CCperson_org_seq_inp_vert.gif" style="width:50%"/>  | **Multiple object removal** <br> - pedestrians are removed using bounding-box shaped masks  <br> - elliptical dilation mask of 21 pixels used <br> <a href="https://www.youtube.com/watch?v=GUJq84gjvM4&t=398s">Source: YouTube video 15:26-15:27</a> |
+
+
 
 
