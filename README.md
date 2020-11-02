@@ -1,5 +1,5 @@
 # VideoObjectRemoval
-### Video inpainting with automatic object detection
+### *Video inpainting with automatic object detection*
 ---
 
 ### Quick Links ###
@@ -18,19 +18,20 @@ The end result of this project is a video editing platform in the context of loc
 ### Project Video
 
 <a href="http://www.youtube.com/watch?feature=player_embedded&v=sABfRj50FK4
-" target="_blank"><img src="http://img.youtube.com/vi/sABfRj50FK4/0.jpg" 
-alt="Video Object Removal Project" width="480" height="360" border="10" /></a>
+  " target="_blank"><img src="http://img.youtube.com/vi/sABfRj50FK4/0.jpg" 
+  alt="Video Object Removal Project" width="480" height="360" border="10"/>
+</a>
 
 ### Project Results
 
 | Result | Description  |
 | ------ |:------------ |
-| <img src="assets/CCperson_org_seq_inp_vert.gif" style="width:50%"/>  | **Multiple object removal** <br> - pedestrians are removed using bounding-box shaped mask  <br> - elliptical dialation mask of 21 pixels used |
+| <img src="assets/CCperson_org_seq_inp_vert.gif" style="width:50%"/>  | **Multiple object removal** <br> - pedestrians are removed using bounding-box shaped mask  <br> - elliptical dialation mask of 21 pixels used <br> <a href="https://www.youtube.com/watch?v=GUJq84gjvM4&t=398s">Source: YouTube video 15:16-15:17</a> |
 
 ---
 
 | Result | Description  |
 | ------ |:------------ |
-| <img src="assets/CCCar_org_seq_inp_vert.gif" style="width:50%"/>  | **Single object removal** <br> - A single vehichle is removed using a conforming mask <br> - elliptical dialation mask of 21 pixels used |    
+| <img src="assets/CCCar_org_seq_inp_vert.gif" style="width:50%"/>  | **Single object removal** <br> - A single vehichle is removed using a conforming mask <br> - elliptical dialation mask of 21 pixels used <br> <a href="https://www.youtube.com/watch?v=GUJq84gjvM4&t=398s">Source: YouTube video 15:26-15:27</a>|    
 
 
