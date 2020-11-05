@@ -5,9 +5,9 @@
 ### Quick Links ###
 
   - [Setup](./SETUP.md)
-
+  
   - [Background](./DESCRIPTION.md)
-
+  
   - [References](./REFERENCES.md)
 
 ### Overview
@@ -34,6 +34,14 @@ The end result of this project is a video editing platform in the context of loc
 | ------ |:------------ |
 | <img src="assets/CCperson_org_seq_inp_vert.gif" style="width:50%"/>  | **Multiple object removal** <br> - pedestrians are removed using bounding-box shaped masks  <br> - elliptical dilation mask of 21 pixels used <br> <a href="https://www.youtube.com/watch?v=GUJq84gjvM4&t=398s">Source: YouTube video 15:26-15:27</a> |
 
+### Project Setup
 
+1. Install NVIDIA docker, if not already installed (see [setup](./SETUP.md) )
+
+2. Follow the instructions from the YouTube video for the specific project setup:
+
+<a href="http://www.youtube.com/watch?feature=player_embedded&v=YvSXwaDaxGA
+" target="_blank"><img src="http://img.youtube.com/vi/YvSXwaDaxGA/0.jpg" 
+alt="IMAGE ALT TEXT HERE" width="480" height="360" border="10" /></a>
 
 
